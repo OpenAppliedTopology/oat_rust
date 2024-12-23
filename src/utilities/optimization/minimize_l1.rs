@@ -20,7 +20,7 @@
 //!                 y and x are unconstrained continuous variables
 //! ```
 
-use good_lp::{SolverModel, Solution, minilp, Expression, Variable, ProblemVariables};
+use good_lp::{SolverModel, Solution, Expression, Variable, ProblemVariables};
 
 use itertools::Itertools;
 use num::ToPrimitive;
@@ -251,7 +251,8 @@ pub fn minimize_l1<
     // form the model
     let mut problem     =   variables
                             .minimise( objective.clone() )
-                            .using( minilp );
+                            // .using( minilp );
+                            .using(good_lp::microlp);
 
     // add constraints
     for row in key_to_row.values() {
@@ -426,7 +427,7 @@ pub fn minimize_l1_kernel<
     // form the model
     let mut problem     =   variables
                             .minimise( objective.clone() )
-                            .using( minilp );
+                            .using(good_lp::microlp);
 
     // add constraints
     for col in key_to_col.values() {
