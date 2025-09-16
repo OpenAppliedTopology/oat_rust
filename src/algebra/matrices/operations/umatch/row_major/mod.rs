@@ -1,20 +1,23 @@
-//! U-match factorization for row-major matrices
+//! U-match factorization (uses row-major storage)
+//! 
+//! # Background
+//! 
+//! To learn more about U-match factorization, check out the [umatch](crate::algebra::matrices::operations::umatch) module, or see the paper [U-match factorization: sparse homological algebra, lazy cycle representatives, and dualities in persistent (co)homology](https://arxiv.org/abs/2108.08831), by Hang, Giusti, Ziegelmeier, and Henselman-Petrusek.
+//! All COMB's are calculated as described in this paper.
 //! 
 //! # Quick start
 //!
-//! To factor a matrix, call [Umatch::factor].  This will produce a [Umatch], which you can use to obtain copies of the matching matrix, the COMB's, and more.
-//! 
-//! 
-//! 
-//! # Example
+//! To factor a matrix, call [Umatch::new].  This will produce a [Umatch], which you can use to obtain copies of the generalized matching matrix, the COMB's, and more.
+//! Here's an example:
 //! 
 //! ```
-//! use oat_rust::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;
-//! use oat_rust::algebra::matrices::types::{vec_of_vec::sorted::VecOfVec};
-//! use oat_rust::algebra::matrices::operations::{umatch::row_major::Umatch, multiply::ProductMatrix};
-//! use oat_rust::algebra::matrices::debug::verify_that_product_is_identity;
-//! use oat_rust::algebra::matrices::query::{ViewRowAscend, ViewColDescend};
-//! use oat_rust::algebra::matrices::display::print_indexed_minor_views;
+//! use oat_rust::algebra::rings::types::field_prime_order::PrimeOrderField;
+//! use oat_rust::algebra::matrices::types::{vec_of_vec::sorted::VecOfVec, packet::MatrixAlgebraPacket};
+//! use oat_rust::algebra::matrices::operations::umatch::row_major::Umatch;
+//! use oat_rust::algebra::matrices::types::product::ProductMatrix;
+//! use oat_rust::algebra::matrices::debug::product_is_identity_matrix;
+//! use oat_rust::algebra::matrices::query::MatrixOracle;
+//! use oat_rust::algebra::matrices::display::print_indexed_columns;
 //! use oat_rust::algebra::vectors::operations::VectorOperations;
 //! use oat_rust::utilities::order::{OrderOperatorAuto, ReverseOrder};
 //! use itertools::Itertools;
@@ -23,100 +26,91 @@
 //! // ===============================
 //! 
 //! // define the ring operator and order operator
-//! let modulus               =   5;
-//! let ring_operator         =   PrimeOrderFieldOperator::new( modulus );        
-//! let order_operator        =   OrderOperatorAuto;
+//! let modulus             =   5;
+//! let ring_operator       =   PrimeOrderField::new( modulus );        
+//! let order_operator      =   OrderOperatorAuto;
 //! 
 //! // define the matrix we wish to factor
-//! let mapping_data          =   VecOfVec::new( 
-//!                                   vec![   
-//!                                       vec![(0,1), (1,1), (2,1)],  // row 0
-//!                                       vec![                   ],  // row 1
-//!                                       vec![              (2,1)],  // row 2
-//!                                   ] 
-//!                               );
-//! let mapping               =   & mapping_data;
+//! let matrix_to_factor       =   & VecOfVec::new( 
+//!                                 vec![   
+//!                                     vec![(0,1), (1,1), (2,1)],  // row 0
+//!                                     vec![                   ],  // row 1
+//!                                     vec![              (2,1)],  // row 2
+//!                                 ] 
+//!                             ).ok().unwrap();
+//! let matrix_to_factor       =   MatrixAlgebraPacket::with_default_order( &matrix_to_factor, ring_operator.clone());
 //!                                 
 //! // COMPUTE U-MATCH
 //! // ===============================
 //!                                 
 //! let umatch
-//!     =   Umatch::factor(
-//!             mapping,  // the matrix we wish to factor
+//!     =   Umatch::new(
+//!             matrix_to_factor,  // the matrix we wish to factor
 //!             (0..3).rev(), // an iterator that runs over all row indices, from bottom to top
-//!             ring_operator.clone(), // the operator for the coefficient ring
-//!             order_operator.clone(), // order comparator for the entries in each row
-//!             order_operator.clone(), // order comparator for the entries in each column
 //!         );
 //!     
 //!     
 //! // INSPECT FACTORIZATION
 //! // ===============================
 //!     
-//! // extract R, R^{-1}, C, C^{-1}, and M
-//! let r           =   umatch.comb_codomain();        // the codomain COMB
-//! let rinv        =   umatch.comb_codomain_inv();    // inverse of the the codomain COMB
-//! let c           =   umatch.comb_domain();          // the domain COMB
-//! let cinv        =   umatch.comb_domain_inv();      // inverse of the domain COMB
-//! let m           =   umatch.matching_ref();         // the generalized matching matrix
+//! // extract T, T^{-1}, S, S^{-1}, and M
+//! let t           =   umatch.target_comb();        // the target COMB
+//! let tinv        =   umatch.target_comb_inverse();    // inverse of the the target COMB
+//! let s           =   umatch.source_comb();          // the source COMB
+//! let sinv        =   umatch.source_comb_inverse();      // inverse of the source COMB
+//! let m           =   umatch.generalized_matching_matrix_ref();         // the generalized matching matrix
 //!     
 //!     
-//! println!("\nMinor views of the codomain COMB");   print_indexed_minor_views( &r, 0..3 ); 
-//! println!("\nMinor views of the   domain COMB");   print_indexed_minor_views( &c, 0..3 ); 
-//! println!("\nMinor views of the matching matrix"); print_indexed_minor_views( &m, 0..3 ); 
+//! println!("\nColumns of the target COMB");     print_indexed_columns( &t, 0..3 ); 
+//! println!("\nColumns of the source COMB");     print_indexed_columns( &s, 0..3 ); 
+//! println!("\nColumns of the generalized matching matrix"); print_indexed_columns( &m, 0..3 ); 
 //!     
 //! // this will print the following:
 //! //
-//! // Minor views of the codomain COMB
-//! // minor_view 0: [(0, 1)]
-//! // minor_view 1: [(1, 1)]
+//! // Columns of the target COMB
+//! // column 0: [(0, 1)]
+//! // column 1: [(1, 1)]
 //! // 
-//! // Minor views of the   domain COMB
-//! // minor_view 0: [(0, 1)]
-//! // minor_view 1: [(1, 1), (0, 3)]
-//! // minor_view 2: [(2, 1), (0, 2)]
+//! // Columns of the   source COMB
+//! // column 0: [(0, 1)]
+//! // column 1: [(1, 1), (0, 3)]
+//! // column 2: [(2, 1), (0, 2)]
 //! // 
-//! // Minor views of the matching matrix
-//! // minor_view 0: [(0, 1)]
-//! // minor_view 1: []
-//! // minor_view 2: [(1, 1)]
+//! // Columns of the generalized matching matrix
+//! // column 0: [(0, 1)]
+//! // column 1: []
+//! // column 2: [(1, 1)]
 //! 
 //! // SOLVE Ax = b FOR x
 //! // ===============================
 //! 
-//! let b   =   [ (2,1), (0,1) ]; // note we list entries in reverse order
-//! let x   =   umatch.solve_dx_equals_b( b.clone() ).unwrap().collect_vec();
-//! let dx  =   umatch.multiply_dv(x);
+//! let b   =   [ (0,1), (2,1) ];
+//! let x   =   umatch.solve_dx_equals_b( b.clone() ).unwrap();
+//! let dx  =   umatch.multiply_dx(x);
 //! assert!( dx.eq( b ) );
 //!     
 //!     
 //! // VERIFY THE CALCULATION
 //! // ===============================
 //!     
-//! // check that the product of the domain COMB with its inverse is identity: C * C^{-1} = I
-//! verify_that_product_is_identity( &c, &cinv, 0..3, ring_operator.clone(), OrderOperatorAuto );
+//! // check that the product of the source COMB with its inverse is identity: S * S^{-1} = I
+//! product_is_identity_matrix( &s, &sinv, 0..3 );
 //!     
-//! // check that the product of the codomain COMB with its inverse is identity: R * R^{-1} = I
-//! verify_that_product_is_identity( &r, &rinv, 0..3, ring_operator.clone(), OrderOperatorAuto );
+//! // check that the product of the target COMB with its inverse is identity: T * T^{-1} = I
+//! product_is_identity_matrix( &t, &tinv, 0..3 );
 //!     
-//! // check the factorization: R^{-1} * D * C = M
-//! let rinv_d   = ProductMatrix::new( &rinv,   &mapping, ring_operator.clone(), OrderOperatorAuto );      
-//! let rinv_d_c = ProductMatrix::new( &rinv_d, &c,       ring_operator.clone(), OrderOperatorAuto );                
-//! for keymaj in 0 .. 3 { 
+//! // check the factorization: T^{-1} * D * S = M
+//! let rinv_d   = ProductMatrix::new( &tinv,   &matrix_to_factor   );      
+//! let rinv_d_c = ProductMatrix::new( &rinv_d, &s                  );                
+//! for row_index in 0 .. 3 { 
 //!     assert_eq!(
-//!         rinv_d_c.view_major_ascend( keymaj ).collect_vec(),
-//!         m.view_major_ascend( keymaj ).collect_vec()
+//!         rinv_d_c.row( &row_index ).collect_vec(),
+//!         m.row( &row_index ).collect_vec()
 //!     ) 
 //! }   
 //! ```
 //! 
 //! 
-//! # About
-//! 
-//! 
-//! 
-//! To learn more about U-match factorization, check out the [umatch](crate::algebra::matrices::operations::umatch) module, or see the paper [U-match factorization: sparse homological algebra, lazy cycle representatives, and dualities in persistent (co)homology](https://arxiv.org/abs/2108.08831), by Hang, Giusti, Ziegelmeier, and Henselman-Petrusek.
-//! All COMB's are calculated as described in this paper.
 
 pub mod comb;
 pub mod construction;
@@ -132,54 +126,54 @@ use itertools::Itertools;
 
 use comb::*;
 use construction::*;
+use num::rational::Ratio;
+use ordered_float::OrderedFloat;
+use sprs::linalg::ordering::order;
 
-use crate::algebra::matrices::operations::solve::triangle::{TriangularSolverMinorDescend, TriangularSolverMajorAscend};
-use crate::algebra::matrices::types::bimajor::{MatrixBimajor, MatrixBimajorData};
+use crate::algebra::matrices::types::product::ProductMatrix;
+use crate::algebra::matrices::operations::solve::triangle::{TriangularSolveForColumnVectorReverse, TriangularSolveForRowVector};
+use crate::algebra::matrices::operations::MatrixOracleOperations;
+use crate::algebra::matrices::types::bimajor::MatrixBimajorData;
 use crate::algebra::matrices::types::packet::MatrixAlgebraPacket;
-use crate::algebra::vectors::entries::{KeyValSet, KeyValNew};
-use crate::algebra::matrices::operations::transform_entry_wise::ReindexSquareMatrix;
-use crate::algebra::matrices::types::matching::{GeneralizedMatchingArrayWithMajorOrdinals};
-use crate::algebra::matrices::types::prepend_viewmaj::PrependDiagonalEntryToViewMajorAscendAndViewMinorDescend;
+use crate::algebra::vectors::entries::KeyValNew;
+use crate::algebra::matrices::operations::transform_entry_wise::{ReindexMatrixColumns, ReindexSquareMatrix};
+use crate::algebra::matrices::types::matching::{GeneralizedMatchingMatrixWithSequentialOrder};
+use crate::algebra::matrices::types::scalar_diagonal_triangle::SumOfScalarAndStrictlyUpperTriangularMatrices;
 
 use crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
-use crate::algebra::matrices::query::{ViewRowAscend, ViewColDescend, IndicesAndCoefficients, ViewsMinorDescend};
+use crate::algebra::matrices::query::{ MatrixAlgebra, MatrixOracle, };
+use crate::algebra::matrices::operations::iterate_rows_and_columns::SequenceOfReverseColumns;
+use crate::algebra::matrices::operations::combine_rows_and_columns::{LinearCombinationOfColumns, LinearCombinationOfColumnsReverse, LinearCombinationOfRows };
+use crate::topology::simplicial::simplices::weighted::WeightedSimplex;
 use crate::utilities::functions::evaluate::{ EvaluateFunctionFnMutWrapper };
 
 use crate::utilities::iterators::general::{FilterOutMembers};
-use crate::utilities::iterators::merge::hit::{HitMerge};
-use crate::algebra::vectors::entries::{KeyValGet};
-use crate::algebra::rings::operator_traits::{Semiring, Ring, DivisionRing};
+use crate::utilities::iterators::merge::hit::{IteratorsMergedInSortedOrder};
+use crate::algebra::vectors::entries::{KeyValGet, KeyValPair};
+use crate::algebra::rings::traits::{SemiringOperations, DivisionRingOperations};
 
-use crate::utilities::order::{JudgePartialOrder, OrderOperatorByKeyCutsom, ReverseOrder};
+use crate::utilities::order::{JudgeOrder, OrderOperatorAuto, OrderOperatorByKey, OrderOperatorByKeyCustom, ReverseOrder};
 
 
-use crate::algebra::vectors::operations::{Scale, VectorOperations, Simplify};
+use crate::algebra::vectors::operations::{Scale, Simplify, VectorOperations};
 
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::fmt::Debug;
-use std::iter::{Cloned, Peekable};
+use std::iter::Cloned;
 
 
 
-use crate::algebra::matrices::operations::solve::echelon::{EchelonSolverMajorAscendWithMajorKeys};
+use crate::algebra::matrices::operations::solve::echelon::{RowEchelonSolver};
 
-use crate::algebra::matrices::operations::transform_vector_wise::{OnlyKeyMinInsideCollection, OnlyKeyMinOutsideCollection, OnlyKeyMajInsideCollection, OnlyKeyMajOutsideCollection};
-
-
-
-
+use crate::algebra::matrices::operations::transform_vector_wise::{OnlyColumnIndicesInsideCollection, OnlyColumnIndicesOutsideCollection, OnlyRowIndicesInsideCollection, OnlyRowIndicesOutsideCollection};
 
 
 
 
 
+use derive_getters::Dissolve;
 
-/// Provides method to identify elements on the Pareto frontier of a matrix
-pub trait ParetoShortCircuit<T> {
-    /// Returns `Some(T)` when `self` is a major view, and the first element of `self` lies on the Pareto frontier.
-    fn pareto_short_circuit(& self) -> Option< T >;
-}
 
 
 
@@ -193,52 +187,42 @@ pub trait ParetoShortCircuit<T> {
 
 
 
-/// A (compressed representation of) a U-match factorization; all matrices concerned are represented in row-major format.
+/// A [U-match decomposition](https://arxiv.org/abs/2108.08831)
 /// 
-/// Internally, this object stores a copy of the matrix `R_{\rho \rho}` defined in Hang et al., 
-/// "Umatch factorization: ..." 2021 (paper link)[https://arxiv.org/abs/2108.08831] **with its diagonal elements deleted**.  
-/// More precisely, it contains a `VecOfVec< usize, Mapping::Coefficient >`, whose `k`th row contains the off-diagonal elements of
-/// `R_{\rho \rho}`; where we replace each index `\rho_i` with the corresponding integer `i`, so that elements of the 
-/// `VecOfVec` are tuples of form `(usize, Mapping::Coefficient)`.
+/// This object represents a U-match decomposition `TM=DS` (equivalently `RM = DC`) of a matrix`D`. Internally, it stores three pieces of information
 /// 
+/// - The matrix to be factored, `D`. (This must implement the [MatrixOracle] and [MatrixAlgebra] traits. These traits
+///   are automatically inherited by references, so you can also pass in a reference `&D`).
+/// - A copy of the sparse matrix `R_{\rho \rho}` defined in [Hang et al. 2021](https://arxiv.org/abs/2108.08831). 
+///   This is an upper triangular matrix with 1's on the diagonal. The off-diagonal entries are stored in a [VecOfVec](crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec)
+///   data structure.
+/// - The matrix `M`, stored as a [GeneralizedMatchingMatrixWithSequentialOrder].
+///   This data structure essentially encodes a list of tuples `(r0,c0,x0), .., (rN,cN,xN)` such that `M[ri,ci] = xi` for all `i`.
+///   We call `i` the *ordinal* of `ri` (respectively, of `ci`). The data is organized such that `r0 < .. < rN`, where order is
+///   determined by the order operator `D.order_operator_for_row_indices()`.  The column indices `c0, .., cN` are NOT sorted in
+///   ascending order. Because `M` is a generalized matching matrix, there are no repeats in the sequence of row indices; nor are
+///   ther repeats in the sequence of column indices.
 /// 
-/// # Design notes
-/// 
-/// **Why keep `Mapping::ViewMajorAscend` as a generic type parameter?**  
-/// 
-/// **Why store the "off diagonal seed" of the codomain COMB as a `VecOfVec` instead of a `VecOfVec`?**  Because we want to wrap this
-/// struct in a `PrependDiagonalEntryToViewMajorAscendAndViewMinorDescend` struct; this wrapper suppies the missing diagonal entries of,
-/// the seed, thus forming the complete seed of the codomain COMB, which is a primitive and fundamental object for this 
-/// computational library.  If we wanted to create an oracle for the seed that exposed entries as *references* to tuples,
-/// then we would have to store the diagonal entries in memory.  However,  [`numerical experiments`](https://arxiv.org/pdf/2108.08831.pdf) 
-/// have shown that the number of diagonal entries often eclipses the number of off-diagonal elements.  Thus storing 
-/// the diagonal entries might incur a nontrivial memory cost.
-/// 
-/// **Why store the "off diagonal seed" of the codomain COMB as a `VecOfVec` instead of a `Vec< Vec< (usize, Mapping::Coefficient) > >`?**
-/// Because `VecOfVec` comes with certain guarantees about order of entries, which allows us to safely implement 
-/// the `ViewRowAscend` and `ViewRowDescend` traits.
-/// 
-/// **Remark** One can always obtain a `VecOfVecFromBorrow` from a `VecOfVec` via the
-/// [`from_VecOfVec`](crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVecFromBorrow::from_VecOfVec) method.
-#[derive(Clone, Debug)]
-pub struct Umatch< Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries > 
+///   As explained by the Inner Identities in [Hang et al. 2021](https://arxiv.org/abs/2108.08831), this data is enough to rapidly calculate
+///   any row or column of `T, S`, or their inverses.
+#[derive(Clone,Debug,Dissolve,Eq,PartialEq)] // can't automatically derive PartialOrd or Ord for this struct because can't derive PartialOrd or Ord for GeneralizedMatchingMatrixWithSequentialOrder (because GeneralizedMatchingMatrixWithSequentialOrder contains hashmaps, which don't impelment PartialOrd or Ord)
+pub struct Umatch< MatrixToFactor > 
     where   
-        Mapping:                    ViewRowAscend + IndicesAndCoefficients,
-        Mapping::ColIndex:          Clone + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingArrayWithMajorOrdinals` struct
-        Mapping::RowIndex:          Clone + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingArrayWithMajorOrdinals` struct
-        Mapping::ViewMajorAscend:   IntoIterator,
-        Mapping::EntryMajor:        KeyValGet< Mapping::ColIndex, Mapping::Coefficient >,
+        MatrixToFactor:                     MatrixAlgebra,
+        MatrixToFactor::ColumnIndex:        Hash, // required by the `GeneralizedMatchingMatrixWithSequentialOrder` struct
+        MatrixToFactor::RowIndex:           Hash, // required by the `GeneralizedMatchingMatrixWithSequentialOrder` struct
 {
-    mapping:                      Mapping,
-    matching:                     GeneralizedMatchingArrayWithMajorOrdinals< Mapping::ColIndex, Mapping::RowIndex, Mapping::Coefficient >,
-    comb_codomain_inv_matched_block_indexed_by_matched_keymaj_ordinal_off_diagonal:   
-                                MatrixBimajorData<
-                                    VecOfVec< usize, Mapping::Coefficient >,
-                                    VecOfVec< usize, Mapping::Coefficient >,
-                                >,
-    ring_operator:              RingOperator,
-    order_operator_major:       OrderOperatorRowEntries,
-    order_operator_minor:       OrderOperatorColEntries,    
+    matrix_to_factor:                       MatrixToFactor,
+    matching:                               GeneralizedMatchingMatrixWithSequentialOrder< 
+                                                MatrixToFactor::ColumnIndex, 
+                                                MatrixToFactor::RowIndex, 
+                                                MatrixToFactor::Coefficient 
+                                            >,
+    matched_block_of_target_comb_inverse_indexed_by_ordinal_of_matched_row_off_diagonal:   
+                                            MatrixBimajorData<
+                                                VecOfVec< usize, MatrixToFactor::Coefficient >,
+                                                VecOfVec< usize, MatrixToFactor::Coefficient >,
+                                            >,  
 }
 
 
@@ -248,168 +232,128 @@ pub struct Umatch< Mapping, RingOperator, OrderOperatorRowEntries, OrderOperator
 
 
 
-impl < Mapping, RingOperator, OrderOperatorRowIndex, OrderOperatorColIndex, >  
+impl < MatrixToFactor >  
 
     Umatch 
-        < 
-            Mapping, 
-            RingOperator, 
-            OrderOperatorByKeyCutsom< Mapping::ColIndex, Mapping::Coefficient, Mapping::EntryMajor, OrderOperatorColIndex, >,  // recall that entries in the major views have minor keys
-            OrderOperatorByKeyCutsom< Mapping::RowIndex, Mapping::Coefficient, Mapping::EntryMinor, OrderOperatorRowIndex, >, // recall that entries in the minor views have major keys
-        >  
+        < MatrixToFactor >  
     
     where   
-        Mapping::ColIndex:              Clone + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingArrayWithMajorOrdinals` struct
-        Mapping::RowIndex:              Clone + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingArrayWithMajorOrdinals` struct 
-        Mapping:                        ViewRowAscend + IndicesAndCoefficients,
-        Mapping::ViewMajorAscend:       IntoIterator,
-        Mapping::EntryMajor:            KeyValGet< Mapping::ColIndex, Mapping::Coefficient >,
-        // OrderOperatorByKey<usize, Mapping::Coefficient, (usize, Mapping::Coefficient)>: JudgePartialOrder< (usize, Mapping::Coefficient)>
+        MatrixToFactor:                        MatrixAlgebra,
+        MatrixToFactor::ColumnIndex:           Hash + std::cmp::Eq, // required by the `GeneralizedMatchingMatrixWithSequentialOrder` struct
+        MatrixToFactor::RowIndex:              Hash + std::cmp::Eq, // required by the `GeneralizedMatchingMatrixWithSequentialOrder` struct 
 {
 
     /// Generate a new U-match factorization
     /// 
     /// # Arguments
     /// 
-    /// - `mapping`: matrix you want to factor (or "mapping matrix")
-    /// - `iter_keymaj`: an iterator that runs over the row indices (= major indices) of the matrix, in *strictly descending order*
-    /// - `ring_operator`: operator for the coefficient ring
-    /// - `order_operator_keymaj`: order operator for the row indices (= major keys)
-    /// - `order_operator_keymin`: order operator for the column indices (= minor keys)
-    /// 
-    /// # Special features of this function
-    /// 
-    /// Although the Umatch struct can take arbitrary orders the entries in its major and minor views, this
-    /// constructor requires the user to provide an order on minor and major keys.  This is a safety measure, to prevent
-    /// common forms of errors.  However, if you really want a custom order on entries, there are other ways to construct
-    /// a U-match factorization, besides this constructor.
-    pub fn factor
-            < IterRowIndex > ( 
-                mapping:                    Mapping, 
-                iter_keymaj:                IterRowIndex,
-                ring_operator:              RingOperator,
-                order_operator_keymaj:      OrderOperatorRowIndex,                   
-                order_operator_keymin:      OrderOperatorColIndex,             
+    /// - `matrix_to_factor`: matrix you want to factor
+    /// - `row_indices_in_reverse_order`: an iterator that runs over the row indices of the matrix, in *strictly descending order*
+    pub fn new
+            < RowIndicesInReverseOrder > ( 
+                matrix_to_factor:                       MatrixToFactor, 
+                row_indices_in_reverse_order:           RowIndicesInReverseOrder,        
             ) 
         -> 
         Self
 
-    where   Mapping:                    ViewRowAscend + IndicesAndCoefficients, 
-            IterRowIndex:               Iterator < Item = Mapping::RowIndex >,
-            Mapping::ColIndex:          Clone + Hash + std::cmp::Eq + Debug, 
-            Mapping::RowIndex:          Clone + Hash + std::cmp::Eq + Debug,     // !!! remove Debug eventually       
-            Mapping::Coefficient:      Clone + Debug,            // !!! remove Debug eventually       
-            RingOperator:               Clone + Semiring< Mapping::Coefficient > + Ring< Mapping::Coefficient > + DivisionRing< Mapping::Coefficient >,
-            Mapping::ViewMajorAscend:   Clone, // !!! remove clone
-            Mapping::ViewMajorAscendIntoIter: Clone,            
-            Mapping::EntryMajor:        KeyValSet< Mapping::ColIndex, Mapping::Coefficient > + Debug + Clone,    // !!!!!!!!!!!!!! REMOVE THE DEBUG REQUIREMENT AFTER DEBUGGING!!!!!            
-            OrderOperatorColIndex:        Clone + JudgePartialOrder <  Mapping::ColIndex >, // !!! remove clone
-            OrderOperatorRowIndex:        Clone + JudgePartialOrder <  Mapping::RowIndex >,
+    where   
+            MatrixToFactor::RingOperator:       DivisionRingOperations< Element = MatrixToFactor::Coefficient >,           
+            MatrixToFactor::RowEntry:           KeyValPair,
+            MatrixToFactor::ColumnEntry:        KeyValPair,            
+            RowIndicesInReverseOrder:           Iterator< Item = MatrixToFactor::RowIndex >,
             
     {
         
-        let ( comb_codomain_inv_off_diag_pivot_block, matching ) : ( VecOfVec<usize, Mapping::Coefficient>, GeneralizedMatchingArrayWithMajorOrdinals< Mapping::ColIndex, Mapping::RowIndex, Mapping::Coefficient > )
-            = get_codomain_comb_inv_off_diag_pivot_block( 
-                    & mapping, 
-                    iter_keymaj, 
-                    ring_operator.clone(),
-                    order_operator_keymin.clone(),
-                    // order_operator_keymaj.clone(),
+        let ( comb_target_inv_off_diag_pivot_block, matching ) : ( VecOfVec<usize, MatrixToFactor::Coefficient>, GeneralizedMatchingMatrixWithSequentialOrder< MatrixToFactor::ColumnIndex, MatrixToFactor::RowIndex, MatrixToFactor::Coefficient > )
+            = get_pivot_block_of_target_comb_inverse_with_deleted_diagonal( 
+                    & matrix_to_factor, 
+                    row_indices_in_reverse_order, 
                 );
 
-        let comb_codomain_inv_off_diag_pivot_block
+        let comb_target_inv_off_diag_pivot_block
             =   MatrixBimajorData { 
-                    matrix_minor_data: comb_codomain_inv_off_diag_pivot_block.transpose_deep( matching.num_pairs() ).unwrap(),
-                    matrix_major_data: comb_codomain_inv_off_diag_pivot_block, 
-                    // matrix_minor_data: transpose_deep, // the number of rows we specify is gauranteed to be correct; it makes the matrix square
+                    matrix_columns_data:    comb_target_inv_off_diag_pivot_block
+                                                .transpose_deep( matching.number_of_structural_nonzeros() ) // the number of rows we specify is gauranteed to be correct; it makes the matrix square
+                                                .unwrap(),                     
+                    matrix_rows_data:       comb_target_inv_off_diag_pivot_block, 
                 };
         
         Umatch{ 
-                mapping, 
+                matrix_to_factor, 
                 matching, 
-                comb_codomain_inv_matched_block_indexed_by_matched_keymaj_ordinal_off_diagonal:     comb_codomain_inv_off_diag_pivot_block,   
-                ring_operator,
-                order_operator_major:      OrderOperatorByKeyCutsom
-                                                                ::<Mapping::ColIndex, Mapping::Coefficient, Mapping::EntryMajor, OrderOperatorColIndex, >
-                                                                ::new( order_operator_keymin ),
-                order_operator_minor:     OrderOperatorByKeyCutsom
-                                                                ::<Mapping::RowIndex, Mapping::Coefficient, Mapping::EntryMinor, OrderOperatorRowIndex, >
-                                                                ::new( order_operator_keymaj ),                                                                
-                // order_operator_minor:     OrderOperatorByKeyCutsom::new( order_operator_keymaj ),                
-                // phantom_viewmajorascend:        PhantomData,
+                matched_block_of_target_comb_inverse_indexed_by_ordinal_of_matched_row_off_diagonal:     comb_target_inv_off_diag_pivot_block,   
             }
         
     }
 
 
 
-    /// Same as [Umatch::factor], but applies the clearning optimization.
+    /// Same as [Umatch::new], but applies the compress optimization.
     /// 
     /// Concretely, this means that when iterating over row indices, the solver skips indices that have
     /// already been identified as nonzero columns in the matching array.
-    pub fn factor_with_clearing
-            < IterRowIndex, KeyBoth, > ( 
-                mapping:              Mapping, 
-                iter_keymaj:                IterRowIndex,
-                ring_operator:              RingOperator,
-                order_operator_keymin:      OrderOperatorColIndex,
-                order_operator_keymaj:      OrderOperatorRowIndex,                
+    /// 
+    /// This method **only works correctly** if the set of matched row indices is disjoint from the set
+    /// of matched column indices in the actual U-match decomposition of the matrix to be factored.
+    /// It can be shown mathematically that this condition is always satisfied when the matrix to
+    /// be factored is the differential matrix of a chain complex.
+    pub fn new_with_compression
+            < RowIndicesInReverseOrder, IndexForRowsAndColumns, EntryForRowsAndColumns, Coefficient > ( 
+                matrix_to_factor:              MatrixToFactor, 
+                row_indices_in_reverse_order:                RowIndicesInReverseOrder,
             ) 
         -> 
-        Umatch< 
-                Mapping, 
-                RingOperator, 
-                OrderOperatorByKeyCutsom< Mapping::ColIndex, Mapping::Coefficient, Mapping::EntryMajor, OrderOperatorColIndex >, 
-                OrderOperatorByKeyCutsom< Mapping::RowIndex, Mapping::Coefficient, Mapping::EntryMinor, OrderOperatorRowIndex >, 
-            > 
+        Umatch< MatrixToFactor, > 
 
-    where   Mapping:                           ViewRowAscend + IndicesAndCoefficients< ColIndex=KeyBoth, RowIndex=KeyBoth >, 
-            IterRowIndex:                             Iterator < Item = Mapping::RowIndex >,
-            Mapping::ColIndex:                   Clone + Hash + std::cmp::Eq + Debug, 
-            Mapping::RowIndex:                   Clone + Hash + std::cmp::Eq + Debug,     // !!! remove Debug eventually       
-            Mapping::Coefficient:                   Clone + Debug,            // !!! remove Debug eventually       
-            RingOperator:                           Clone + Semiring< Mapping::Coefficient > + Ring< Mapping::Coefficient > + DivisionRing< Mapping::Coefficient >,
-            Mapping::ViewMajorAscend:          ParetoShortCircuit<Mapping::EntryMajor>, // !!! remove clone
-            Mapping::EntryMajor:     KeyValSet< Mapping::ColIndex, Mapping::Coefficient > + Debug + Clone,    // !!!!!!!!!!!!!! REMOVE THE DEBUG REQUIREMENT AFTER DEBUGGING!!!!!            
-            OrderOperatorColIndex:                    Clone + JudgePartialOrder <  Mapping::ColIndex >, // !!! remove clone
-            OrderOperatorRowIndex:                    Clone + JudgePartialOrder <  Mapping::RowIndex >,
-            // HitMerge<Peekable<Scale<<Mapping::ViewMajorAscend as IntoIterator>::IntoIter, Mapping::ColIndex, RingOperator, Mapping::Coefficient>>, OrderOperatorByKeyCutsom< Mapping::ColIndex, Mapping::Coefficient, Mapping::EntryMajor, OrderOperatorColIndex>>: Clone // !!!! remove this        
-            
-    {
-        
-        let ( comb_codomain_inv_off_diag_pivot_block, matching ) : ( VecOfVec<usize, Mapping::Coefficient>, GeneralizedMatchingArrayWithMajorOrdinals< Mapping::ColIndex, Mapping::RowIndex, Mapping::Coefficient > )
-            = get_codomain_comb_inv_off_diag_pivot_block_with_clearing( 
-                    & mapping, 
-                    iter_keymaj, 
-                    ring_operator.clone(),
-                    order_operator_keymin.clone(),
-                    // order_operator_keymaj.clone(),
+    where   
+        IndexForRowsAndColumns:     Clone + Debug + Eq + Hash, // hash is required for the hashing performed by the generalized matching array
+        EntryForRowsAndColumns:     PartialEq + KeyValPair< Key=IndexForRowsAndColumns, Val=Coefficient >,
+        MatrixToFactor:             MatrixAlgebra<
+                                        ColumnIndex=                    IndexForRowsAndColumns,  // for the pareto short circuit to work, rows and columns must have the same index type
+                                        RowIndex=                       IndexForRowsAndColumns,  // for the pareto short circuit to work, rows and columns must have the same index type
+                                        RowEntry=                       EntryForRowsAndColumns,
+                                        ColumnEntry=                    EntryForRowsAndColumns,                        
+                                        RingOperator:                   DivisionRingOperations< Element =  Coefficient >, // the ring operator for the coefficient ring
+                                        Coefficient=                    Coefficient,  // the coefficient type        
+                                    >
+                                    + MatrixOracleOperations,  
+        RowIndicesInReverseOrder:               IntoIterator< Item = MatrixToFactor::RowIndex >,                    
+        Coefficient:                Clone + Debug + PartialEq,                
+    {        
+        let ( comb_target_inv_off_diag_pivot_block, matching ) : 
+            ( 
+                VecOfVec<usize, 
+                MatrixToFactor::Coefficient>, 
+                GeneralizedMatchingMatrixWithSequentialOrder< MatrixToFactor::ColumnIndex, 
+                MatrixToFactor::RowIndex, 
+                MatrixToFactor::Coefficient > 
+            )
+            =   target_comb_inv_off_diag_pivot_block_skipmatched( 
+                    & matrix_to_factor, 
+                    row_indices_in_reverse_order, 
                 );
 
-        let comb_codomain_inv_off_diag_pivot_block
+        // for computational efficiency, store a copy of the pivot block in AND a copy of its transpose
+        let comb_target_inv_off_diag_pivot_block
             =   MatrixBimajorData { 
-                    matrix_minor_data: comb_codomain_inv_off_diag_pivot_block.transpose_deep( matching.num_pairs() ).unwrap(), // the number of rows we specify is gauranteed to be correct; it makes the matrix square                
-                    matrix_major_data: comb_codomain_inv_off_diag_pivot_block, 
+                    matrix_columns_data: comb_target_inv_off_diag_pivot_block.transpose_deep( matching.number_of_structural_nonzeros() ).unwrap(), // the number of rows we specify is gauranteed to be correct; it makes the matrix square                
+                    matrix_rows_data: comb_target_inv_off_diag_pivot_block, 
                 };                
         
         Umatch{ 
-                mapping, 
+                matrix_to_factor, 
                 matching, 
-                comb_codomain_inv_matched_block_indexed_by_matched_keymaj_ordinal_off_diagonal:     comb_codomain_inv_off_diag_pivot_block,   
-                ring_operator,
-                order_operator_major:      OrderOperatorByKeyCutsom
-                                                                ::<Mapping::ColIndex, Mapping::Coefficient, Mapping::EntryMajor, OrderOperatorColIndex, >
-                                                                ::new( order_operator_keymin ),
-                order_operator_minor:     OrderOperatorByKeyCutsom
-                                                                ::<Mapping::RowIndex, Mapping::Coefficient, Mapping::EntryMinor, OrderOperatorRowIndex, >
-                                                                ::new( order_operator_keymaj ),                                                                
-                // order_operator_minor:     OrderOperatorByKeyCutsom::new( order_operator_keymaj ),                
-                // phantom_viewmajorascend:        PhantomData,
+                matched_block_of_target_comb_inverse_indexed_by_ordinal_of_matched_row_off_diagonal:     comb_target_inv_off_diag_pivot_block,   
             }
         
     }
 
 
+    /// Returns the [ring operator](crate::algebra::rings) for the coefficient ring used in the factorization.
+    pub fn ring_operator( &self ) -> MatrixToFactor::RingOperator {
+        self.matrix_to_factor.ring_operator()
+    }
 }
 
 
@@ -417,447 +361,326 @@ impl < Mapping, RingOperator, OrderOperatorRowIndex, OrderOperatorColIndex, >
 
 
 //  ---------------------------------------------------------------------------------------------------------
-//  U-MATCH -- GENERAL IMPLEMENTATIONS (THERE ARE SPECIFIC IMPLEMENTATIONS FOR KEYMIN=KEMAJ BELOW)
+//  U-MATCH -- GENERAL IMPLEMENTATIONS (THERE ARE SPECIFIC IMPLEMENTATIONS FOR ColumnIndex=RowIndex BELOW)
 //  ---------------------------------------------------------------------------------------------------------
 
-     
-impl < Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries, >  
+
+
+impl < MatrixToFactor >  
 
     Umatch 
-    < Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries, >  
+    < MatrixToFactor >  
     
     where   
-        Mapping::ColIndex:                  Clone + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingArrayWithMajorOrdinals` struct
-        Mapping::RowIndex:                  Clone + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingArrayWithMajorOrdinals` struct 
-        Mapping:                            ViewRowAscend + IndicesAndCoefficients,
-        Mapping::ViewMajorAscend:           IntoIterator,
-        Mapping::EntryMajor:                KeyValGet< Mapping::ColIndex, Mapping::Coefficient >,
-        // OrderOperatorByKey<usize, Mapping::Coefficient, (usize, Mapping::Coefficient)>: JudgePartialOrder< (usize, Mapping::Coefficient)>
+        MatrixToFactor:                             MatrixAlgebra,    
+        MatrixToFactor::RingOperator:               DivisionRingOperations,        
+        MatrixToFactor::ColumnIndex:                Hash, // required by the `GeneralizedMatchingMatrixWithSequentialOrder` struct
+        MatrixToFactor::RowIndex:                   Hash, // required by the `GeneralizedMatchingMatrixWithSequentialOrder` struct 
+        MatrixToFactor::RowEntry:                   KeyValPair,
+        MatrixToFactor::ColumnEntry:                KeyValPair,
+
 {
-  
-// }
 
 
-    /// Generate a new U-match factorization (this constructor usually throws an error due to a technial issue re: type inference, so it is usually more convenient to use the function `new_umatchrowmajor`).
-    pub fn new_custom_order
-            < IterRowIndex, OrderOperatorColIndex, OrderOperatorRowIndex, EntryMinor > ( 
-                mapping:                  Mapping, 
-                iter_keymaj:              IterRowIndex,
-                ring_operator:            RingOperator,
-                order_operator_keymin:    OrderOperatorColIndex,
-                order_operator_keymaj:    OrderOperatorRowIndex,                
-            ) 
-        -> 
-        Umatch< 
-                Mapping, 
-                RingOperator, 
-                OrderOperatorByKeyCutsom< Mapping::ColIndex, Mapping::Coefficient, Mapping::EntryMajor, OrderOperatorColIndex >, 
-                OrderOperatorByKeyCutsom< Mapping::RowIndex, Mapping::Coefficient, EntryMinor, OrderOperatorRowIndex >, 
-            > 
+    //  =========================================================================================================
+    //  U-MATCH REF OBJECT
+    //  =========================================================================================================
 
-    where   Mapping:           ViewRowAscend + IndicesAndCoefficients,
-            IterRowIndex:             Iterator < Item = Mapping::RowIndex >,
-            Mapping::ColIndex:                 Clone + Hash + std::cmp::Eq + Debug, 
-            Mapping::RowIndex:                 Clone + Hash + std::cmp::Eq + Debug,     // !!! remove Debug eventually       
-            Mapping::Coefficient:                 Clone + Debug,            // !!! remove Debug eventually       
-            RingOperator:           Clone + Semiring< Mapping::Coefficient > + Ring< Mapping::Coefficient > + DivisionRing< Mapping::Coefficient >,
-            Mapping::ViewMajorAscend:        Clone, // !!! remove clone
-            Mapping::EntryMajor:  KeyValSet< Mapping::ColIndex, Mapping::Coefficient > + Debug + Clone,    // !!!!!!!!!!!!!! REMOVE THE DEBUG REQUIREMENT AFTER DEBUGGING!!!!!            
-            OrderOperatorColIndex:   Clone + JudgePartialOrder <  Mapping::ColIndex >, // !!! remove clone
-            OrderOperatorRowIndex:   Clone + JudgePartialOrder <  Mapping::RowIndex >,
-            HitMerge<Peekable<Scale<<Mapping::ViewMajorAscend as IntoIterator>::IntoIter, Mapping::ColIndex, RingOperator, Mapping::Coefficient>>, OrderOperatorByKeyCutsom< Mapping::ColIndex, Mapping::Coefficient, Mapping::EntryMajor, OrderOperatorColIndex>>: Clone // !!!! remove this        
-            
+
+    /// Rank of the factored matrix
+    /// 
+    /// Equivalently, 
+    /// - the dimension of the image of the linear map represented by the matrix
+    /// - the number of nonzero entries in the generalized matching matrix of the U-match factorization
+    pub fn rank( &self ) -> usize        
     {
-        
-        let ( comb_codomain_inv_off_diag_pivot_block, matching ) : ( VecOfVec<usize, Mapping::Coefficient>, GeneralizedMatchingArrayWithMajorOrdinals< Mapping::ColIndex, Mapping::RowIndex, Mapping::Coefficient > )
-            = get_codomain_comb_inv_off_diag_pivot_block( 
-                    & mapping, 
-                    iter_keymaj, 
-                    ring_operator.clone(),
-                    order_operator_keymin.clone(),
-                    // order_operator_keymaj.clone(),
-                );
+        self.matching.number_of_structural_nonzeros()
+    }  
 
-        let comb_codomain_inv_off_diag_pivot_block
-            =   MatrixBimajorData { 
-                    matrix_minor_data: comb_codomain_inv_off_diag_pivot_block.transpose_deep( matching.num_pairs() ).unwrap(), // the number of rows we specify is gauranteed to be correct; it makes the matrix square                
-                    matrix_major_data: comb_codomain_inv_off_diag_pivot_block, 
-                };                
-        
-        Umatch{ 
-                mapping, 
-                matching, 
-                comb_codomain_inv_matched_block_indexed_by_matched_keymaj_ordinal_off_diagonal:     comb_codomain_inv_off_diag_pivot_block,   
-                ring_operator,
-                order_operator_major:      OrderOperatorByKeyCutsom
-                                                                ::<Mapping::ColIndex, Mapping::Coefficient, Mapping::EntryMajor, OrderOperatorColIndex, >
-                                                                ::new( order_operator_keymin ),
-                order_operator_minor:     OrderOperatorByKeyCutsom
-                                                                ::<Mapping::RowIndex, Mapping::Coefficient, EntryMinor, OrderOperatorRowIndex, >
-                                                                ::new( order_operator_keymaj ),                                                                
-                // order_operator_minor:     OrderOperatorByKeyCutsom::new( order_operator_keymaj ),                
-                // phantom_viewmajorascend:        PhantomData,
-            }
-        
+
+
+    /// Returns a copy of the order comparator for (column-index, coefficient) pairs
+    pub fn order_operator_for_row_entries( &self ) -> MatrixToFactor::OrderOperatorForRowEntries 
+    { self.matrix_to_factor.order_operator_for_row_entries() } 
+    
+    /// Returns a copy of the **inverted** order comparator for (column-index, coefficient) pairs
+    pub fn order_operator_for_row_entries_reverse( &self ) -> ReverseOrder< MatrixToFactor::OrderOperatorForRowEntries >
+    { ReverseOrder::new(self.matrix_to_factor.order_operator_for_row_entries()) }    
+
+    /// Returns a copy of the order comparator for row indices
+    pub fn order_operator_for_row_indices( &self ) -> MatrixToFactor::OrderOperatorForRowIndices
+    { self.matrix_to_factor.order_operator_for_row_indices() } 
+    
+    /// Returns a copy of the **inverted** order comparator for row indices
+    pub fn order_operator_for_row_indices_reverse( &self ) -> ReverseOrder< MatrixToFactor::OrderOperatorForRowIndices >
+    { ReverseOrder::new(self.matrix_to_factor.order_operator_for_row_indices()) }                
+
+    /// Returns a copy of the order comparator for (row-index, coefficient) pairs
+    pub fn order_operator_for_column_entries( &self ) -> MatrixToFactor::OrderOperatorForColumnEntries 
+    { self.matrix_to_factor.order_operator_for_column_entries() }  
+    
+    /// Returns a copy of the **inverted** order comparator for (row-index, coefficient) pairs
+    pub fn order_operator_for_column_entries_reverse( &self ) -> ReverseOrder< MatrixToFactor::OrderOperatorForColumnEntries >
+    { ReverseOrder::new( self.matrix_to_factor.order_operator_for_column_entries() ) } 
+
+    /// Returns a copy of the order comparator for (row-index, coefficient) pairs
+    pub fn order_operator_for_column_indices( &self ) -> MatrixToFactor::OrderOperatorForColumnIndices 
+    { self.matrix_to_factor.order_operator_for_column_indices() }  
+    
+    /// Returns a copy of the **inverted** order comparator for (row-index, coefficient) pairs
+    pub fn order_operator_for_column_indices_reverse( &self ) -> ReverseOrder< MatrixToFactor::OrderOperatorForColumnIndices >
+    { ReverseOrder::new( self.matrix_to_factor.order_operator_for_column_indices() ) }       
+
+    
+    /// The sequence of matched row indices in *ascending order*
+    /// 
+    /// Concretely, this is the sequence of matched row indices `r_0 < .. < r_k`, where
+    /// order is deteremined by the order operator for row indices associated with the factored matrix.
+    pub fn matched_row_indices_in_ascending_order( &self ) -> &Vec< MatrixToFactor::RowIndex > {
+        self.matching.matched_row_indices_in_sequence()
     }
 
+    /// The sequence of matched column indices, ordered according to the associated row indices
+    /// 
+    /// Concretely, this is the sequence of matched column indices `c_0, .., c_k`, obtained by 
+    /// ordering the sequence of matched row-column index pairs `(r0,c0), .., (rk,ck)` 
+    /// such that `r_0 < .. < r_k`.
+    /// 
+    /// **In particular, there is no guarantee that `c_0 < .. < c_k`**.
+    pub fn matched_column_indices_in_matched_row_order( &self ) -> &Vec< MatrixToFactor::ColumnIndex > {
+        self.matching.matched_column_indices_in_sequence()
+    }  
 
-// //  =========================================================================================================
-// //  U-MATCH REF OBJECT
-// //  =========================================================================================================
-
-
-
-// #[derive(Debug)]
-// pub struct Umatch< Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries > 
-//     where   
-//         Mapping::ColIndex:     Clone + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingArrayWithMajorOrdinals` struct
-//         Mapping::RowIndex:     Clone + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingArrayWithMajorOrdinals` struct
-//         Mapping::ViewMajorAscend:            IntoIterator,
-//         Mapping::EntryMajor:      KeyValGet< Mapping::ColIndex, Mapping::Coefficient >,
-// {
-//     mapping:                                          &'a Mapping,
-//     matching:                                         &'b GeneralizedMatchingArrayWithMajorOrdinals< Mapping::ColIndex, Mapping::RowIndex, Mapping::Coefficient >,
-//     comb_codomain_inv_matched_block_indexed_by_matched_keymaj_ordinal_off_diagonal:     &'b VecOfVec< usize, Mapping::Coefficient >,
-//     ring_operator:                                          RingOperator,
-//     order_operator_major:                                 OrderOperatorRowEntries,
-//     order_operator_minor:                                 OrderOperatorColEntries,    
-//     phantom_viewmajorascend:                                PhantomData< Mapping::ViewMajorAscend >, // required b/c otherwise the compiler complains that the type parameter `Mapping::ViewMajorAscend` is unused
-// }
-
-// //  Implement
-// //  ---------------------------------------------------------------------------------------------------------
-
-// impl < 'a, 'b, Mapping, Mapping::ViewMajorAscend, Mapping::ColIndex, Mapping::RowIndex, Mapping::Coefficient, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >  
-
-//     UmatchRowMajorWithRefs
-//     < 'a, 'b, Mapping, Mapping::ViewMajorAscend, Mapping::ColIndex, Mapping::RowIndex, Mapping::Coefficient, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >  
-    
-//     where   
-//         Mapping::ColIndex:                 Clone + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingArrayWithMajorOrdinals` struct
-//         Mapping::RowIndex:                 Clone + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingArrayWithMajorOrdinals` struct 
-//         Mapping:           ViewRowAscend + IndicesAndCoefficients,
-//         Mapping::ViewMajorAscend:        IntoIterator,
-//         Mapping::EntryMajor:  KeyValGet< Mapping::ColIndex, Mapping::Coefficient >,
-
-
-// {
-//     pub fn new
-//         ( umatch: &'b Umatch < 'a, Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >  ) 
-//         ->
-//         UmatchRowMajorWithRefs
-//              <'a, 'b, Mapping, Mapping::ViewMajorAscend, Mapping::ColIndex, Mapping::RowIndex, Mapping::Coefficient, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries > 
-//         where
-//             RingOperator:       Clone,
-//             OrderOperatorRowEntries: Clone,
-//             OrderOperatorColEntries: Clone,
-//     {
-//         UmatchRowMajorWithRefs{ 
-//                 mapping:                                            umatch.mapping, 
-//                 matching:                                         & umatch.matching,
-//                 comb_codomain_inv_matched_block_indexed_by_matched_keymaj_ordinal_off_diagonal:     & umatch.comb_codomain_inv_matched_block_indexed_by_matched_keymaj_ordinal_off_diagonal,
-//                 ring_operator:                                            umatch.ring_operator.clone(),
-//                 order_operator_major:                                   umatch.order_operator_major.clone(),
-//                 order_operator_minor:                                   umatch.order_operator_minor.clone(),                
-//                 phantom_viewmajorascend:                                  PhantomData,
-//             }
-//     }
-
-    /// Returns a copy of the ring operator
-    pub fn ring_operator( &self ) -> RingOperator 
-        where
-            RingOperator:   Clone,
-    { self.ring_operator.clone() }
-
-    /// Returns a copy of the order comparator for index-value pairs whose index is a `Mapping::ColIndex`.
-    pub fn order_operator_major( &self ) -> OrderOperatorRowEntries 
-        where
-            OrderOperatorRowEntries:   Clone,
-    { (self.order_operator_major).clone() } 
-    
-    /// Returns a copy of the **inverted** order comparator for index-value pairs whose index is a `Mapping::ColIndex`.
-    pub fn order_operator_major_reverse( &self ) -> ReverseOrder< OrderOperatorRowEntries >
-        where
-            OrderOperatorRowEntries:   Clone,
-    { ReverseOrder::new( (self.order_operator_major).clone() ) }    
-    
-    
-    // /// Returns a copy of the **inverted** order comparator for index-value pairs whose index is a `Mapping::ColIndex`, wrapped in a struct that implements additional ordering traits.
-    // pub fn order_operator_major_reverse_extended_functionality( &self ) -> InferTotalOrderFromJudgePartialOrder< ReverseOrder< OrderOperatorRowEntries > >
-    //     where
-    //         OrderOperatorRowEntries:   Clone,
-    // { 
-    //     InferTotalOrderFromJudgePartialOrder::new( // we have to construct an order comparator that spits out values of type Ord rather than type bool
-    //         self.order_operator_major_reverse() 
-    //     )         
-    // }        
-
-    /// Returns a copy of the order comparator for index-value pairs whose index is a `Mapping::RowIndex`.
-    pub fn order_operator_minor( &self ) -> OrderOperatorColEntries 
-        where
-            OrderOperatorColEntries:   Clone,
-    { self.order_operator_minor.clone() }  
-    
-    /// Returns a copy of the **inverted** order comparator for index-value pairs whose index is a `Mapping::RowIndex`.
-    pub fn order_operator_minor_reverse( &self ) -> ReverseOrder< OrderOperatorColEntries >
-        where
-            OrderOperatorColEntries:   Clone,
-    { ReverseOrder::new( self.order_operator_minor.clone() ) }   
-
-
-    // /// Returns a copy of the **inverted** order comparator for index-value pairs whose index is a `Mapping::RowIndex`, wrapped in a struct that implements additional ordering traits.
-    // pub fn order_operator_minor_reverse_extended_functionality( &self ) -> InferTotalOrderFromJudgePartialOrder< ReverseOrder< OrderOperatorColEntries > >
-    //     where
-    //         OrderOperatorColEntries:   Clone,
-    // { 
-    //     InferTotalOrderFromJudgePartialOrder::new( // we have to construct an order comparator that spits out values of type Ord rather than type bool
-    //         self.order_operator_minor_reverse() 
-    //     )         
-    // }       
-    
+    /// The sequence of matched column indices in *ascending order*
+    /// 
+    /// Concretely, this is the sequence of matched column indices `c_0 < .. < c_k`, where
+    /// order is deteremined by the order operator for column indices associated with the factored matrix.
+    /// 
+    /// # Performance
+    /// 
+    /// The U-match data structure stores matched column indices in a different order. Thus to obtain this
+    /// sequence, we must copy the stored data, and sort the column indices according to the order operator.
+    /// If all you need is the sequence of matched column indices, use [Umatch::matched_column_indices_in_matched_row_order] instead.
+    pub fn matched_column_indices_in_ascending_order( &self ) -> Vec< MatrixToFactor::ColumnIndex > {
+        let mut indices = self.matching.matched_column_indices_in_sequence().clone();
+        let order_operator = self.matrix_to_factor.order_operator_for_column_indices();
+        indices.sort_by( |a,b| order_operator.judge_cmp( a, b ) );
+        indices
+    }      
     
    
 
-    /// Returns the (row-major) codomain COMB
+    /// Returns the  target COMB
     /// 
     /// # Design notes
     /// 
-    /// This matrix cannot be indexed by integers without extra work, since we only assign ordinals to *matched* rows of the mapping array.
-    pub fn comb_codomain( &self ) -> CombCodomain< '_, Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >  {
-        CombCodomain{ umatch: self }
+    /// This matrix cannot be indexed by integers without extra work, since we only assign ordinals to *matched* rows of the factored matrix.
+    pub fn target_comb( &self ) -> TargetComb< '_, MatrixToFactor >  {
+        TargetComb{ umatch: self }
     }
 
-    /// Returns the (row-major) inverse of the codomain COMB
+    /// Returns the  inverse of the target COMB
     /// 
     /// # Design notes
     /// 
-    /// This matrix cannot be indexed by integers without extra work, since we only assign ordinals to *matched* rows of the mapping array.
-    pub fn comb_codomain_inv( &self ) -> CombCodomainInv< '_, Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >  {
-        CombCodomainInv{ umatch: self }
+    /// This matrix cannot be indexed by integers without extra work, since we only assign ordinals to *matched* rows of the factored matrix.
+    pub fn target_comb_inverse( &self ) -> TargetCombInverse< '_, MatrixToFactor >  {
+        TargetCombInverse{ umatch: self }
     }  
     
-    /// Returns the (row-major) domain COMB, indexed by `Mapping::ColIndex`
+    /// Returns the  source COMB, indexed by `MatrixToFactor::ColumnIndex`
     /// 
     /// # Design notes
     /// 
-    /// This matrix cannot be indexed by integers without extra work, since we only assign ordinals to *matched* columns of the mapping array.
-    pub fn comb_domain( &self ) -> CombDomain< '_, Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >  {
-        CombDomain{ umatch: self }
+    /// This matrix cannot be indexed by integers without extra work, since we only assign ordinals to *matched* columns of the factored matrix.
+    pub fn source_comb( &self ) -> SourceComb< '_, MatrixToFactor >  {
+        SourceComb{ umatch: self }
     }
 
-    /// Returns the (row-major) inverse of the domain COMB
+    /// Returns the  inverse of the source COMB
     /// 
     /// # Design notes
     /// 
-    /// This matrix cannot be indexed by integers without extra work, since we only assign ordinals to *matched* columns of the mapping array.
-    pub fn comb_domain_inv( &self ) -> CombDomainInv< '_, Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >  {
-        CombDomainInv{ umatch: self }
+    /// This matrix cannot be indexed by integers without extra work, since we only assign ordinals to *matched* columns of the factored matrix.
+    pub fn source_comb_inverse( &self ) -> SourceCombInverse< '_, MatrixToFactor >  {
+        SourceCombInverse{ umatch: self }
     }      
 
     /// Returns a reference to the matching array of the internally stored  U-match factorization.
-    pub fn matching_ref( &self ) -> & GeneralizedMatchingArrayWithMajorOrdinals< Mapping::ColIndex, Mapping::RowIndex, Mapping::Coefficient > { & self.matching }
+    pub fn generalized_matching_matrix_ref( &self ) -> & GeneralizedMatchingMatrixWithSequentialOrder< MatrixToFactor::ColumnIndex, MatrixToFactor::RowIndex, MatrixToFactor::Coefficient > { & self.matching }
 
-    /// Returns a reference to the mapping array of the internally stored U-match factorization.
-    pub fn mapping_ref( &self ) -> & Mapping { & self.mapping }    
+    /// Returns a reference to the factored matrix of the internally stored U-match factorization.
+    pub fn matrix_to_factor_ref( &self ) -> & MatrixToFactor { & self.matrix_to_factor }    
 
 
-    // pub fn packet_comb_codomain< 'a >( &'a self ) -> 
-    //     MatrixAlgebraPacket< CombCodomain< 'a, Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >
+    // pub fn packet_comb_target< 'a >( &'a self ) -> 
+    //     MatrixAlgebraPacket< TargetComb< 'a, MatrixToFactor >, MatrixToFactor::RingOperator, MatrixToFactor::OrderOperatorForRowEntries, MatrixToFactor::OrderOperatorForColumnEntries >
     //     where
-    //         RingOperator:               Clone,
-    //         OrderOperatorRowEntries:    Clone,
-    //         OrderOperatorColEntries:    Clone,            
+    //         MatrixToFactor::RingOperator:               Clone,
+    //         MatrixToFactor::OrderOperatorForRowEntries:    Clone,
+    //         MatrixToFactor::OrderOperatorForColumnEntries:    Clone,            
     // {
-    //     MatrixAlgebraPacket{ matrix: self.comb_codomain(), ring: self.ring_operator(), row_entry_order: self.order_operator_major(), col_entry_order: self.order_operator_minor() }
+    //     MatrixAlgebraPacket{ matrix: self.target_comb(), ring: self.ring_operator(), row_entry_order: self.order_operator_for_row_entries(), col_entry_order: self.order_operator_for_column_entries() }
     // }
 
-    /// Returns a convenient [MatrixAlgebraPacket](crate::algebra::matrices::types::packet::MatrixAlgebraPacket) for the (row-major) codomain COMB
-    pub fn comb_codomain_packet( &self ) -> 
-        MatrixAlgebraPacket< CombCodomain< '_, Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >, RingOperator, OrderOperatorColEntries, OrderOperatorColEntries >
-        where
-            RingOperator:               Clone,
-            OrderOperatorRowEntries:    Clone,
-            OrderOperatorColEntries:    Clone,            
-    {
-        MatrixAlgebraPacket{ matrix: self.comb_codomain(), ring: self.ring_operator(), row_entry_order: self.order_operator_minor(), col_entry_order: self.order_operator_minor() }
-    }
+    // /// Returns a convenient [MatrixAlgebraPacket](crate::algebra::matrices::types::packet::MatrixAlgebraPacket) for the  target COMB
+    // pub fn comb_target_packet( &self ) -> 
+    //     MatrixAlgebraPacket< TargetComb< '_, MatrixToFactor, MatrixToFactor::RingOperator, MatrixToFactor::OrderOperatorForRowEntries, OrderOperatorForRowIndices, MatrixToFactor::OrderOperatorForColumnEntries >, MatrixToFactor::RingOperator, MatrixToFactor::OrderOperatorForColumnEntries, MatrixToFactor::OrderOperatorForColumnEntries >
+    //     where
+    //         MatrixToFactor::RingOperator:               Clone,
+    //         MatrixToFactor::OrderOperatorForRowEntries:    Clone,
+    //         MatrixToFactor::OrderOperatorForColumnEntries:    Clone,            
+    // {
+    //     MatrixAlgebraPacket{ matrix: self.target_comb(), ring: self.ring_operator(), order_operator_for_row_entries: self.order_operator_for_column_entries(), order_operator_for_column_entries: self.order_operator_for_column_entries() }
+    // }
 
-    /// Returns a convenient [MatrixAlgebraPacket](crate::algebra::matrices::types::packet::MatrixAlgebraPacket) for the (row-major) inverse of the domain COMB
-    pub fn comb_codomain_inv_packet( &self ) -> 
-        MatrixAlgebraPacket< CombCodomainInv< '_, Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >, RingOperator, OrderOperatorColEntries, OrderOperatorColEntries >
-        where
-            RingOperator:               Clone,
-            OrderOperatorRowEntries:    Clone,
-            OrderOperatorColEntries:    Clone,            
-    {
-        MatrixAlgebraPacket{ matrix: self.comb_codomain_inv(), ring: self.ring_operator(), row_entry_order: self.order_operator_minor(), col_entry_order: self.order_operator_minor() }
-    }
+    // /// Returns a convenient [MatrixAlgebraPacket](crate::algebra::matrices::types::packet::MatrixAlgebraPacket) for the  inverse of the source COMB
+    // pub fn comb_target_inv( &self ) -> 
+    //     MatrixAlgebraPacket< TargetCombInverse< '_, MatrixToFactor >, MatrixToFactor::RingOperator, MatrixToFactor::OrderOperatorForColumnEntries, MatrixToFactor::OrderOperatorForColumnEntries >
+    //     where
+    //         MatrixToFactor::RingOperator:               Clone,
+    //         MatrixToFactor::OrderOperatorForRowEntries:    Clone,
+    //         MatrixToFactor::OrderOperatorForColumnEntries:    Clone,            
+    // {
+    //     MatrixAlgebraPacket{ matrix: self.target_comb_inverse(), ring: self.ring_operator(), order_operator_for_row_entries: self.order_operator_for_column_entries(), order_operator_for_column_entries: self.order_operator_for_column_entries() }
+    // }
 
-    /// Returns a convenient [MatrixAlgebraPacket](crate::algebra::matrices::types::packet::MatrixAlgebraPacket) for the (row-major) domain COMB
-    pub fn comb_domain_packet( &self ) -> 
-        MatrixAlgebraPacket< 
-                CombDomain< '_, Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >, 
-                RingOperator, 
-                OrderOperatorRowEntries, 
-                OrderOperatorRowEntries
-            >
-        where
-            RingOperator:               Clone,
-            OrderOperatorRowEntries:    Clone,         
-    {
-        MatrixAlgebraPacket{ matrix: self.comb_domain(), ring: self.ring_operator(), row_entry_order: self.order_operator_major(), col_entry_order: self.order_operator_major() }
-    }
+    // /// Returns a convenient [MatrixAlgebraPacket](crate::algebra::matrices::types::packet::MatrixAlgebraPacket) for the  source COMB
+    // pub fn comb_source_packet( &self ) -> 
+    //     MatrixAlgebraPacket< 
+    //             SourceComb< '_, MatrixToFactor >, 
+    //             MatrixToFactor::RingOperator, 
+    //             MatrixToFactor::OrderOperatorForRowEntries, 
+    //             MatrixToFactor::OrderOperatorForRowEntries
+    //         >
+    //     where
+    //         MatrixToFactor::RingOperator:               Clone,
+    //         MatrixToFactor::OrderOperatorForRowEntries:    Clone,         
+    // {
+    //     MatrixAlgebraPacket{ matrix: self.source_comb(), ring: self.ring_operator(), order_operator_for_row_entries: self.order_operator_for_row_entries(), order_operator_for_column_entries: self.order_operator_for_row_entries() }
+    // }
 
-    /// Returns a convenient [MatrixAlgebraPacket](crate::algebra::matrices::types::packet::MatrixAlgebraPacket) for the inverse of the (row-major) domain COMB
-    pub fn comb_domain_inv_packet( &self ) -> 
-        MatrixAlgebraPacket< 
-                CombDomainInv< '_, Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >, 
-                RingOperator, 
-                OrderOperatorRowEntries, 
-                OrderOperatorRowEntries,
-            >
-        where
-            RingOperator:               Clone,
-            OrderOperatorRowEntries:    Clone,          
-    {
-        MatrixAlgebraPacket{ matrix: self.comb_domain_inv(), ring: self.ring_operator(), row_entry_order: self.order_operator_major(), col_entry_order: self.order_operator_major() }
-    }       
+    // /// Returns a convenient [MatrixAlgebraPacket](crate::algebra::matrices::types::packet::MatrixAlgebraPacket) for the inverse of the  source COMB
+    // pub fn comb_source_inv_packet( &self ) -> 
+    //     MatrixAlgebraPacket< 
+    //             SourceCombInverse< '_, MatrixToFactor >, 
+    //             MatrixToFactor::RingOperator, 
+    //             MatrixToFactor::OrderOperatorForRowEntries, 
+    //             MatrixToFactor::OrderOperatorForRowEntries,
+    //         >
+    //     where
+    //         MatrixToFactor::RingOperator:               Clone,
+    //         MatrixToFactor::OrderOperatorForRowEntries:    Clone,          
+    // {
+    //     MatrixAlgebraPacket{ matrix: self.source_comb_inverse(), ring: self.ring_operator(), order_operator_for_row_entries: self.order_operator_for_row_entries(), order_operator_for_column_entries: self.order_operator_for_row_entries() }
+    // }       
 
     /// Returns a reference to the matching array of the internally stored  U-match factorization, wrapped in a convenient convenient [MatrixAlgebraPacket](crate::algebra::matrices::types::packet::MatrixAlgebraPacket)
-    pub fn matching_ref_packet( &self ) 
+    pub fn generalized_matching_matrix_ref_packet( &self ) 
         -> MatrixAlgebraPacket< 
-            & GeneralizedMatchingArrayWithMajorOrdinals< Mapping::ColIndex, Mapping::RowIndex, Mapping::Coefficient >,
-            RingOperator, 
-            OrderOperatorRowEntries, 
-            OrderOperatorColEntries 
+            & GeneralizedMatchingMatrixWithSequentialOrder< MatrixToFactor::ColumnIndex, MatrixToFactor::RowIndex, MatrixToFactor::Coefficient >,
+            MatrixToFactor::RingOperator, 
+            OrderOperatorByKeyCustom < MatrixToFactor::OrderOperatorForColumnIndices >, // order operator for row entries
+            MatrixToFactor::OrderOperatorForRowIndices, // order operator for column indices            
+            OrderOperatorByKeyCustom< MatrixToFactor::OrderOperatorForRowIndices >, // order operator for column entries            
+            MatrixToFactor::OrderOperatorForColumnIndices, // order operator for column indices
         >
-        where
-            RingOperator:               Clone,
-            OrderOperatorRowEntries:    Clone,  
-            OrderOperatorColEntries:    Clone,                      
     {
-        MatrixAlgebraPacket{ matrix: self.matching_ref(), ring: self.ring_operator(), row_entry_order: self.order_operator_major(), col_entry_order: self.order_operator_minor() }
-    } 
+        MatrixAlgebraPacket{ 
+            matrix: self.generalized_matching_matrix_ref(), 
+            ring_operator: self.ring_operator(), 
+            order_operator_for_row_entries:     OrderOperatorByKeyCustom::< MatrixToFactor::OrderOperatorForColumnIndices >::new(  // note: we have to use this instead of `matrix_to_factor_ref().order_operator_for_row_entries()` because the order operator for row entries is specific to the type of row entries in the matrix
+                                                    self.matrix_to_factor.order_operator_for_column_indices() 
+                                                ),
+            order_operator_for_row_indices:     self.matrix_to_factor.order_operator_for_row_indices(),
+            order_operator_for_column_entries:  OrderOperatorByKeyCustom::< MatrixToFactor::OrderOperatorForRowIndices >::new( 
+                                                    self.matrix_to_factor.order_operator_for_row_indices()  // note: we have to use this instead of `matrix_to_factor_ref().order_operator_for_column_entries()` because the order operator for column entries is specific to the type of column entries in the matrix
+                                                ),            
+            order_operator_for_column_indices:  self.matrix_to_factor.order_operator_for_column_indices(),
+        }
+    }  
 
-    /// Returns a reference to the mapping array of the internally stored U-match factorization, wrapped in a convenient convenient [MatrixAlgebraPacket](crate::algebra::matrices::types::packet::MatrixAlgebraPacket)
-    pub fn mapping_ref_packet( &self ) 
-        ->  MatrixAlgebraPacket< 
-            & Mapping,
-            RingOperator, 
-            OrderOperatorRowEntries, 
-            OrderOperatorColEntries 
-        >
-        where
-            RingOperator:               Clone,
-            OrderOperatorRowEntries:    Clone,  
-            OrderOperatorColEntries:    Clone,                              
+             
+
+    /// The column submatrix of the factored matrix indexed by matched column indices.
+    pub fn matrix_to_factor_matched_columns_only( &self ) -> OnlyColumnIndicesInsideCollection< &MatrixToFactor, &HashMap< MatrixToFactor::ColumnIndex, usize >, >
     {
-        MatrixAlgebraPacket{ matrix: self.mapping_ref(), ring: self.ring_operator(), row_entry_order: self.order_operator_major(), col_entry_order: self.order_operator_minor() }
-    }               
+        OnlyColumnIndicesInsideCollection::new( & self.matrix_to_factor, self.matching.bijection_column_indices_to_ordinals_and_inverse().hashmap_element_to_ordinal() )
+    }     
 
+    /// The column submatrix of the factored matrix indexed by unmatched column indices.
+    pub fn matrix_to_factor_matchless_columns_only( &self ) -> OnlyColumnIndicesOutsideCollection< &MatrixToFactor, &HashMap< MatrixToFactor::ColumnIndex, usize >, >
+    {
+        OnlyColumnIndicesOutsideCollection::new( & self.matrix_to_factor, self.matching.bijection_column_indices_to_ordinals_and_inverse().hashmap_element_to_ordinal() )
+    }    
 
-    /// The column submatrix of the mapping array indexed by matched column indices.
-    /// 
-    /// Returns a wrapper that implements `ViewRowAscend`.
-    /// 
-    /// # Design notes
-    /// 
-    /// It seems necessary to use the lifetime parameter 'b because (i) the matching array in the U-match decomposition
-    /// is stored by value within each `Umatch` object, (ii) this is the object that contains the hashmap
-    /// which we use to store the set of matched indices, however (iii) the object `OnlyKeyMinOutsideCollection`
-    /// requires a *reference* to a hashmap, and (iv) said reference has to live long enough to do interesting things.  
-    /// The most evident way to get that "long-enough" lifetime parameter, at present, is by passing the `Umatch`
-    /// object by reference.
-    pub fn mapping_matched_cols_only( &self ) -> OnlyKeyMinInsideCollection< &Mapping, &HashMap< Mapping::ColIndex, usize >, >
+    /// The row submatrix of the factored matrix indexed by matched row indices.
+    pub fn matrix_to_factor_matched_rows_only( &self ) -> OnlyRowIndicesInsideCollection< &MatrixToFactor, &HashMap< MatrixToFactor::RowIndex, usize >, >
         // where 'a: 'b,
     {
-        OnlyKeyMinInsideCollection::new( & self.mapping, self.matching.bimap_min_ref().val_to_ord_hashmap() )
+        OnlyRowIndicesInsideCollection::new( & self.matrix_to_factor, self.matching.bijection_row_indices_to_ordinals_and_inverse().hashmap_element_to_ordinal() )
     }    
-    // fn mapping_matched_cols_only<'c>( &'c self ) -> OnlyKeyMinInsideCollection<'c,'c, Mapping, Mapping::ViewMajorAscend, HashMap< Mapping::ColIndex, usize >, Mapping::ColIndex, Mapping::RowIndex, Mapping::Coefficient >
-    //     where 'a: 'c, 'b: 'c,
-    // {
-    //     OnlyKeyMinInsideCollection::<'c, 'c,_,_,_,_,_,_>::new( self.mapping, self.matching.bimap_min().val_to_ord_hashmap() )
-    // }    
 
-    /// The column submatrix of the mapping array indexed by unmatched column indices.
-    /// 
-    /// Returns a wrapper that implements `ViewRowAscend`.
-    /// 
-    /// # Design notes
-    /// 
-    /// It seems necessary to use the lifetime parameter 'b because (i) the matching array in the U-match decomposition
-    /// is stored by value within each `Umatch` object, (ii) this is the object that contains the hashmap
-    /// which we use to store the set of matched indices, however (iii) the object `OnlyKeyMinOutsideCollection`
-    /// requires a *reference* to a hashmap, and (iv) said reference has to live long enough to do interesting things.  
-    /// The most evident way to get that "long-enough" lifetime parameter, at present, is by passing the `Umatch`
-    /// object by reference.
-    pub fn mapping_matchless_cols_only( &self ) -> OnlyKeyMinOutsideCollection< &Mapping, &HashMap< Mapping::ColIndex, usize >, >
+    /// The row submatrix of the factored matrix indexed by unmatched row indices.
+    pub fn matrix_to_factor_matchless_rows_only( &self ) -> OnlyRowIndicesOutsideCollection< &MatrixToFactor, &HashMap< MatrixToFactor::RowIndex, usize >, >
     {
-        OnlyKeyMinOutsideCollection::new( & self.mapping, self.matching.bimap_min_ref().val_to_ord_hashmap() )
-    }    
+        OnlyRowIndicesOutsideCollection::new( & self.matrix_to_factor, self.matching.bijection_row_indices_to_ordinals_and_inverse().hashmap_element_to_ordinal() )
+    }  
 
-    /// The row submatrix of the mapping array indexed by matched row indices.
+ 
+
+
+    /// The square submatrix of the factored matrix indexed by matched rows and columns.
     /// 
-    /// Returns a wrapper that implements `ViewRowAscend`.
-    /// 
-    /// # Design notes
-    /// 
-    /// It seems necessary to use the lifetime parameter 'b because (i) the matching array in the U-match decomposition
-    /// is stored by value within each `Umatch` object, (ii) this is the object that contains the hashmap
-    /// which we use to store the set of matched indices, however (iii) the object `OnlyKeyMinOutsideCollection`
-    /// requires a *reference* to a hashmap, and (iv) said reference has to live long enough to do interesting things.  
-    /// The most evident way to get that "long-enough" lifetime parameter, at present, is by passing the `Umatch`
-    /// object by reference.
-    pub fn mapping_matched_rows_only( &self ) -> OnlyKeyMajInsideCollection< &Mapping, &HashMap< Mapping::RowIndex, usize >, >
-        // where 'a: 'b,
+    /// This matrix is indexed by the same type of row and column indices as the factored matrix. We simply exclude
+    /// entries indexed by row and column indices that are unmatched.
+    pub fn matched_block_of_matrix_to_factor( &self ) -> 
+        OnlyRowIndicesInsideCollection< 
+            OnlyColumnIndicesInsideCollection<
+                &MatrixToFactor,
+                &HashMap< MatrixToFactor::ColumnIndex, usize >, 
+            >, 
+            &HashMap< MatrixToFactor::RowIndex, usize >, 
+        >
     {
-        OnlyKeyMajInsideCollection::new( & self.mapping, self.matching.bimap_maj_ref().val_to_ord_hashmap() )
-    }    
-    // fn mapping_matched_cols_only<'c>( &'c self ) -> OnlyKeyMinInsideCollection<'c,'c, Mapping, Mapping::ViewMajorAscend, HashMap< Mapping::ColIndex, usize >, Mapping::ColIndex, Mapping::RowIndex, Mapping::Coefficient >
-    //     where 'a: 'c, 'b: 'c,
-    // {
-    //     OnlyKeyMinInsideCollection::<'c, 'c,_,_,_,_,_,_>::new( self.mapping, self.matching.bimap_min().val_to_ord_hashmap() )
-    // }    
+        let matched_row_collection      =   self.matching.bijection_row_indices_to_ordinals_and_inverse().hashmap_element_to_ordinal();
+        let matched_column_collection   =   self.matching.bijection_column_indices_to_ordinals_and_inverse().hashmap_element_to_ordinal();        
+        OnlyRowIndicesInsideCollection::new(
+            OnlyColumnIndicesInsideCollection::new(
+                & self.matrix_to_factor,
+                matched_column_collection,
+            ),
+            matched_row_collection,
+        )
+    }
 
-    /// The row submatrix of the mapping array indexed by unmatched row indices.
-    /// 
-    /// Returns a wrapper that implements `ViewRowAscend`.
-    /// 
-    /// # Design notes
-    /// 
-    /// It seems necessary to use the lifetime parameter 'b because (i) the matching array in the U-match decomposition
-    /// is stored by value within each `Umatch` object, (ii) this is the object that contains the hashmap
-    /// which we use to store the set of matched indices, however (iii) the object `OnlyKeyMinOutsideCollection`
-    /// requires a *reference* to a hashmap, and (iv) said reference has to live long enough to do interesting things.  
-    /// The most evident way to get that "long-enough" lifetime parameter, at present, is by passing the `Umatch`
-    /// object by reference.
-    pub fn mapping_matchless_rows_only( &self ) -> OnlyKeyMajOutsideCollection< &Mapping, &HashMap< Mapping::RowIndex, usize >, >
-    {
-        OnlyKeyMajOutsideCollection::new( & self.mapping, self.matching.bimap_maj_ref().val_to_ord_hashmap() )
-    }    
 
-    /// Returns a reference to the internally stored compressed representation of the inverse of the codomain COMB;
+
+
+    /// Returns a reference to the internally stored compressed representation of the inverse of the target COMB;
     /// this representation consists of a `VecOfVec` which encodes the off-diagonal entries of the square submatrix of the 
-    /// inverse of the codomain COMB which is indexed by matched (i.e. pivot) indices.
+    /// inverse of the target COMB which is indexed by matched (i.e. pivot) indices.
     /// 
-    /// Concretely, the represented matrix is obtained from the inverse of the codomain COMB by (i) restricting to the square
-    /// submatrix indexed by the row-pivot indices of the mapping array, and (ii) deleting the diagonal elements
-    /// (each of which is equal to 1).
-    pub fn comb_codomain_inv_matched_block_indexed_by_matched_keymaj_ordinal_off_diagonal_ref( &self ) 
+    /// Concretely, the represented matrix is obtained from the inverse of the target COMB by (i) restricting to the square
+    /// submatrix indexed by the row-pivot indices of the factored matrix, (ii) deleting the diagonal elements
+    /// (each of which is equal to 1), and (iii)
+    /// replacing the index `r_i` with `i` for all `i`, where `r_0 < .. < r_k` is the sequence of matched row indices
+    /// in sorted order, according to the user-provided [order operator](crate::utilities::order).
+    pub fn matched_block_of_target_comb_inverse_indexed_by_ordinal_of_matched_row_off_diagonal_ref( &self ) 
         -> 
         & MatrixBimajorData<
-                VecOfVec< usize, Mapping::Coefficient >,
-                VecOfVec< usize, Mapping::Coefficient >,                
+                VecOfVec< usize, MatrixToFactor::Coefficient >,
+                VecOfVec< usize, MatrixToFactor::Coefficient >,                
             >
-        { & self.comb_codomain_inv_matched_block_indexed_by_matched_keymaj_ordinal_off_diagonal }   
+        { & self.matched_block_of_target_comb_inverse_indexed_by_ordinal_of_matched_row_off_diagonal }   
 
         
-    /// Returns a nested double reference to the internally stored compressed representation of the inverse of the codomain COMB;
+    /// Returns a nested double reference to the internally stored compressed representation of the inverse of the target COMB;
     /// this representation consists of a `VecOfVec` which encodes the off-diagonal entries of the square submatrix of the 
-    /// inverse of the codomain COMB which is indexed by matched (i.e. pivot) indices.
+    /// inverse of the target COMB which is indexed by matched (i.e. pivot) indices.
     /// 
-    /// Concretely, the represented matrix is obtained from the inverse of the codomain COMB by (i) restricting to the square
-    /// submatrix indexed by the row-pivot indices of the mapping array, and (ii) deleting the diagonal elements
+    /// Concretely, the represented matrix is obtained from the inverse of the target COMB by (i) restricting to the square
+    /// submatrix indexed by the row-pivot indices of the factored matrix, and (ii) deleting the diagonal elements
     /// (each of which is equal to 1).    
     /// 
     /// # Design note
@@ -866,272 +689,361 @@ impl < Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries, 
     /// matrix oracle traits.  A `VecOfVec` simple does not implement oracle traits in general, but a reference
     /// `& VecOfVec` does.  Therefore we often need to work with objects of form `&'b &'b VecOfVec`.  In
     /// practice, we find that Rust is prone to inferring the wrong lifetime if we simply write 
-    /// `& self.comb_codomain_inv_matched_block_indexed_by_matched_keymaj_ordinal_off_diagonal_ref()` (for example, one finds errors alluding to
+    /// `& self.matched_block_of_target_comb_inverse_indexed_by_ordinal_of_matched_row_off_diagonal_ref()` (for example, one finds errors alluding to
     /// dropped temprorary values).  This function has succeeded in sidestepping such errors in the past; please 
     /// let us know if it fails to do so successfully in future examples.
     
 
 
-    /// The square, block submatrix of the inverse of the codomain COMB which is indexed by matched row indices.
+    /// The square, block submatrix of the inverse of the target COMB which is indexed by matched row indices.
     /// 
-    /// Concretely, this object is obtained from the inverse of the codomain COMB by (i) restricting to the square
-    /// submatrix indexed by the row-pivot indices of the mapping array, and (ii) deleting the diagonal elements
-    /// (each of which is equal to 1).
-    pub fn comb_codomain_inv_matched_block_indexed_by_matched_keymaj_ordinal< 'a >( &'a self ) 
+    /// Concretely, this object is obtained from the inverse of the target COMB by (i) restricting to the square
+    /// submatrix indexed by the row-pivot indices of the factored matrix, and (ii) 
+    /// replacing the index `r_i` with `i` for all `i`, where `r_0 < .. < r_k` is the sequence of matched row indices
+    /// in sorted order, according to the user-provided [order operator](crate::utilities::order).
+    pub fn matched_block_of_target_comb_inverse_indexed_by_ordinal_of_matched_row< 'a >( &'a self ) 
         -> 
-        PrependDiagonalEntryToViewMajorAscendAndViewMinorDescend<
+        SumOfScalarAndStrictlyUpperTriangularMatrices<
                 &'a  MatrixBimajorData<
-                            VecOfVec< usize, Mapping::Coefficient >,
-                            VecOfVec< usize, Mapping::Coefficient >,                
+                            VecOfVec< usize, MatrixToFactor::Coefficient >,
+                            VecOfVec< usize, MatrixToFactor::Coefficient >,                
                         >
             >
-        where
-            RingOperator:   Semiring< Mapping::Coefficient >,
         {   
 
-            let prepended //: PrependDiagonalEntryToViewMajorAscendAndViewMinorDescend< &'a VecOfVec<usize, Mapping::Coefficient> >
-            = PrependDiagonalEntryToViewMajorAscendAndViewMinorDescend::new( 
-                        self.comb_codomain_inv_matched_block_indexed_by_matched_keymaj_ordinal_off_diagonal_ref(), 
-                        RingOperator::one() 
+            let prepended //: SumOfScalarAndStrictlyUpperTriangularMatrices< &'a VecOfVec<usize, MatrixToFactor::Coefficient> >
+            = SumOfScalarAndStrictlyUpperTriangularMatrices::new( 
+                        self.matched_block_of_target_comb_inverse_indexed_by_ordinal_of_matched_row_off_diagonal_ref(), 
+                        MatrixToFactor::RingOperator::one() 
                     );  
             
             prepended
         }  
         
-    /// The square, block submatrix of the inverse of the codomain COMB which is indexed by matched row indices.
+    /// The square, block submatrix of the inverse of the target COMB which is indexed by matched row indices.
     /// 
-    /// Concretely, this object is obtained from the inverse of the codomain COMB by (i) restricting to the square
-    /// submatrix indexed by the row-pivot indices of the mapping array, and (ii) deleting the diagonal elements
-    /// (each of which is equal to 1).
-    pub fn comb_codomain_inv_matched_block_indexed_by_keymaj( &self ) 
+    /// Concretely, this object is obtained from the inverse of the target COMB by restricting to the square
+    /// submatrix indexed by the pivot-row indices of the factored matrix.
+    /// 
+    /// This submatrix `S` is upper triangular in the sense that `S[i,j] != 0` implies `i <= j`, where order
+    /// is determined by [order operator](crate::utilities::order) on row indices which is returned by the
+    /// factored matrix using the `self.order_operator_for_row_indices()` method in the [MatrixAlgebra] trait.
+    pub fn matched_block_of_target_comb_inverse( &self ) 
         -> 
-        ReindexSquareMatrix< 
-                // PrependDiagonalEntryToViewMajorAscendAndViewMinorDescend<
-                //         &VecOfVec< usize, Mapping::Coefficient >,
-                //     >,
-                PrependDiagonalEntryToViewMajorAscendAndViewMinorDescend<
+        MatrixAlgebraPacket<
+            ReindexSquareMatrix< 
+                SumOfScalarAndStrictlyUpperTriangularMatrices<
                         & MatrixBimajorData<
-                                VecOfVec< usize, Mapping::Coefficient >,
-                                VecOfVec< usize, Mapping::Coefficient >,                
+                                VecOfVec< usize, MatrixToFactor::Coefficient >,
+                                VecOfVec< usize, MatrixToFactor::Coefficient >,                
                             >
                     >,                
-                &Vec< Mapping::RowIndex >,
-                &HashMap< Mapping::RowIndex, usize >,
+                &Vec< MatrixToFactor::RowIndex >,
+                &HashMap< MatrixToFactor::RowIndex, usize >,
                 usize,
-                Mapping::RowIndex,
-                Mapping::EntryMinor,
-            >
-        where
-            RingOperator:   Semiring< Mapping::Coefficient >,
-        {   
+                MatrixToFactor::RowIndex,
+                MatrixToFactor::ColumnEntry,
+            >,
+            MatrixToFactor::RingOperator,
+            MatrixToFactor::OrderOperatorForRowEntries,
+            MatrixToFactor::OrderOperatorForRowIndices,
+            MatrixToFactor::OrderOperatorForRowEntries,
+            MatrixToFactor::OrderOperatorForRowIndices,                  
+        >
+    {   
 
-            let matrix_integer_indexed = self.comb_codomain_inv_matched_block_indexed_by_matched_keymaj_ordinal();
-            ReindexSquareMatrix::new(
-                    matrix_integer_indexed,
-                    self.matching.bimap_maj_ref().ord_to_val_vec(),
-                    self.matching.bimap_maj_ref().val_to_ord_hashmap(),                    
-                )
-        }          
+        let matrix_integer_indexed = self.matched_block_of_target_comb_inverse_indexed_by_ordinal_of_matched_row();
+        let matrix =    ReindexSquareMatrix::new(
+                            matrix_integer_indexed,
+                            self.matching.bijection_row_indices_to_ordinals_and_inverse().vec_elements_in_order(),
+                            self.matching.bijection_row_indices_to_ordinals_and_inverse().hashmap_element_to_ordinal(),                    
+                        );
+        MatrixAlgebraPacket { 
+            matrix, 
+            ring_operator:                      self.ring_operator(),
+            order_operator_for_row_entries:     self.order_operator_for_row_entries(),
+            order_operator_for_row_indices:     self.order_operator_for_row_indices(),
+            order_operator_for_column_entries:  self.order_operator_for_row_entries(),
+            order_operator_for_column_indices:  self.order_operator_for_row_indices(),
+        }
+    }      
 
 
-    /// Returns a matrix with rows indexed by `RowIndex` and columns indexed by `ColIndex`
-    pub fn comb_codomain_inv_times_mapping_matched_block( &self ) 
-        -> 
-        CombCodomainInvTimesMappingMatchedBlock< '_, Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries > 
-        where 
-            RingOperator: Clone,
-            OrderOperatorRowEntries: Clone,
-            OrderOperatorColEntries: Clone,           
+    /// The matched part of the inverse target COMB, with rows indxed by rank order and columns indexed by native row indices.
+    /// 
+    /// If the matched row indices are `rho_0 < .. < rho_k` (arranged in sorted order according to `MatrixToFactor::OrderOpeartorForRowIndices`),
+    /// then this matrix, `M` has rows indexed by `0 .. k` and columns indexed by `rho_0 .. rho_k`. Moreover, `M[i,\rho_j] = T[\rho_i, \rho_j]`,
+    /// where `T` is the target COMB.
+    /// 
+    /// # Comment on notation
+    /// 
+    /// The suffix `_or` at the end of this method name refers to the fact that rows are indexed by (o)rdinal, while
+    /// columns are indxed by (r)ow indices of the matrix to be factored..
+    pub fn matched_block_of_target_comb_inverse_or( &self ) ->
+        MatrixAlgebraPacket<
+            ReindexMatrixColumns< 
+                SumOfScalarAndStrictlyUpperTriangularMatrices<
+                    & MatrixBimajorData<
+                        VecOfVec< usize, MatrixToFactor::Coefficient >,
+                        VecOfVec< usize, MatrixToFactor::Coefficient >,                
+                    >
+                >,                
+                &Vec< MatrixToFactor::RowIndex >,
+                &HashMap< MatrixToFactor::RowIndex, usize >,
+                usize,
+                MatrixToFactor::RowIndex,
+                MatrixToFactor::ColumnEntry,
+            >,
+            MatrixToFactor::RingOperator,
+            MatrixToFactor::OrderOperatorForColumnEntries,      // order operator for row entries (which look like column entries of the factored matrix)
+            OrderOperatorAuto,                                  // order opeartor for row indices (which are usize)
+            OrderOperatorByKey,                                 // order operator for column entries
+            MatrixToFactor::OrderOperatorForRowIndices,         // order operator for column indices (which are row indices of the factored matrix)   
+        >
     {
-        CombCodomainInvTimesMappingMatchedBlock{ umatch_ref: self } // CombCodomainInvTimesMappingMatchedBlock::new(self )
+        let matrix_integer_indexed = self.matched_block_of_target_comb_inverse_indexed_by_ordinal_of_matched_row();
+        let matrix =    ReindexMatrixColumns::new(
+                            matrix_integer_indexed,
+                            self.matching.bijection_row_indices_to_ordinals_and_inverse().vec_elements_in_order(),
+                            self.matching.bijection_row_indices_to_ordinals_and_inverse().hashmap_element_to_ordinal(),                    
+                        );
+        MatrixAlgebraPacket { 
+            matrix, 
+            ring_operator:                      self.ring_operator(),
+            order_operator_for_row_entries:     self.order_operator_for_column_entries(),
+            order_operator_for_row_indices:     OrderOperatorAuto,                          
+            order_operator_for_column_entries:  OrderOperatorByKey,
+            order_operator_for_column_indices:  self.order_operator_for_row_indices(),      
+        }                        
     }
 
 
-    pub fn comb_codomain_inv_times_mapping_matched_block_with_rows_indexed_by_matched_ordmaj( &self ) 
-        -> 
-        CombCodomainInvTimesMappingMatchedBlockRowsIndexedByOrdMaj< '_, Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries > 
-        where 
-            RingOperator: Clone,
-            OrderOperatorRowEntries: Clone,
-            // OrderOperatorColEntries: Clone,
+    /// Product of the matched blocks of the target COMB and the factored matrix.
+    /// 
+    /// Let `M` be the matrix returned by this function, and let `A = Tinv D` be the product of the inverse of the target COMB with the factored matrix `D`. If
+    /// 
+    /// - the matched row indices are `r0 < .. < rN` (arranged in sorted order according to `MatrixToFactor::OrderOpeartorForRowIndices`)
+    /// 
+    /// - the matched column indices are `k0 < .. < kN` (arranged in sorted order according to `MatrixToFactor::OrderOpeartorForColumnIndices`;
+    /// note that this ordering *does not imply that `rho_i` matches with `kappa_i`*)
+    /// 
+    /// then `M[ i, kj] = A[ ri, kj]`
+    /// 
+    /// # Naming convention
+    /// 
+    /// The suffix `oc` at the end of this function name refers to the fact that rows are indxed by (o)rdinal, while columns
+    /// are indexed by the (c)olumn indices of the matrix to be factored.
+    pub fn matched_blocks_of_target_comb_inverse_times_matrix_to_factor_oc( & self ) ->
+        ProductMatrix<
+            MatrixAlgebraPacket< // this packet contains the matched block of the target comb:
+                ReindexMatrixColumns< 
+                    SumOfScalarAndStrictlyUpperTriangularMatrices<
+                        & MatrixBimajorData<
+                            VecOfVec< usize, MatrixToFactor::Coefficient >,
+                            VecOfVec< usize, MatrixToFactor::Coefficient >,                
+                        >
+                    >,                
+                    &Vec< MatrixToFactor::RowIndex >,                   // mapping from old index to new index
+                    &HashMap< MatrixToFactor::RowIndex, usize >,        // mapping from new index to old index
+                    usize,                                              // old index
+                    MatrixToFactor::RowIndex,                           // new index
+                    MatrixToFactor::ColumnEntry,                        // new entry
+                >,
+                MatrixToFactor::RingOperator,
+                MatrixToFactor::OrderOperatorForColumnEntries,          // order operator for row entries 
+                OrderOperatorAuto,                                      // order opeartor for row indices (which are usize)
+                OrderOperatorByKey,                                     // order operator for column entries
+                MatrixToFactor::OrderOperatorForRowIndices,             // order operator for column indices (which are row indices of the factored matrix)   
+            >,            
+            OnlyRowIndicesInsideCollection<                             // the submatrix is the matched part of the factored matrix
+                OnlyColumnIndicesInsideCollection<
+                    &MatrixToFactor,
+                    &HashMap< MatrixToFactor::ColumnIndex, usize >, 
+                >, 
+                &HashMap< MatrixToFactor::RowIndex, usize >, 
+            >            
+        >
     {
-        CombCodomainInvTimesMappingMatchedBlockRowsIndexedByOrdMaj{ umatch_ref: self } // CombCodomainInvTimesMappingMatchedBlock::new(self )
+        let target_block        =   self.matched_block_of_target_comb_inverse_or();
+        let factored_block      =   self.matched_block_of_matrix_to_factor();
+        ProductMatrix::new( target_block, factored_block )
     }    
 
-    pub fn comb_codomain_inv_times_mapping_matched_block_with_rows_indexed_by_matched_keymin( &self ) 
+
+    /// Returns a matrix with rows indexed by `MatrixToFactor::RowIndex` and columns indexed by `MatrixToFactor::ColumnIndex`
+    pub fn target_comb_inverse_times_matrix_to_factor_matched_block( &self ) 
         -> 
-        CombCodomainInvTimesMappingMatchedBlockRowsIndexedByKeyMin< '_, Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries > 
-        where 
-            RingOperator: Clone,
-            OrderOperatorRowEntries: Clone,
-            // OrderOperatorColEntries: Clone,
+        TargetCombInverseTimesMatrixToFactorMatchedBlock< '_, MatrixToFactor > 
     {
-        CombCodomainInvTimesMappingMatchedBlockRowsIndexedByKeyMin{ umatch_ref: self } // CombCodomainInvTimesMappingMatchedBlock::new(self )
+        TargetCombInverseTimesMatrixToFactorMatchedBlock{ umatch: self } // SourceCombInverseMatchedBlock::new(self )
     }
 
-    /// Solve `Rx = b`, where `R` is the codomain COMB.
+ 
+
+    pub fn target_comb_inverse_times_matrix_to_factor_matched_block_with_rows_indexed_by_matched_column_index( &self ) 
+        -> 
+        TargetCombInverseTimesMatrixToFactorMatchedBlockRowsIndexedByColumnIndex< '_, MatrixToFactor > 
+    {
+        TargetCombInverseTimesMatrixToFactorMatchedBlockRowsIndexedByColumnIndex{ umatch: self } // SourceCombInverseMatchedBlock::new(self )
+    }
+
+    /// Solve `Tx = b`, where `T` is the target COMB.
     /// 
     /// Solution returns entries in strictly descending order.
-    /// 
-    /// `b` must iterate over entries in strictly descending order.
-    pub fn solve_rx_equals_b< I >( &self, b: I ) 
-        -> 
-        // Vec< Mapping::EntryMinor >
-        TriangularSolverMinorDescend<
-                I, 
-                CombCodomain< Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >, 
-                Mapping::RowIndex, 
-                RingOperator, 
-                OrderOperatorColEntries
-            >
-        where 
-            Mapping:               ViewColDescend,
-            Mapping::Coefficient:       Clone,
-            I:                          IntoIterator<Item=Mapping::EntryMinor>,
-            Mapping::EntryMinor:    
-                KeyValGet< Mapping::RowIndex, Mapping::Coefficient > +
-                KeyValSet< Mapping::RowIndex, Mapping::Coefficient > + 
-                KeyValNew< Mapping::RowIndex, Mapping::Coefficient > +
-                Debug,
-            Mapping::EntryMajor: 
-                KeyValGet< Mapping::ColIndex, Mapping::Coefficient > +
-                KeyValSet< Mapping::ColIndex, Mapping::Coefficient > + 
-                KeyValNew< Mapping::ColIndex, Mapping::Coefficient > +
-                Clone,
-            RingOperator:               Clone + Semiring< Mapping::Coefficient > + Ring< Mapping::Coefficient > + DivisionRing< Mapping::Coefficient >,
-            OrderOperatorRowEntries: 
-                Clone + JudgePartialOrder<Mapping::EntryMajor>,
-            OrderOperatorColEntries:
-                Clone + JudgePartialOrder<Mapping::EntryMinor>,
-            Mapping::Coefficient:       Clone + Debug,
-            Mapping::ColIndex:       Clone + Debug,
-            Mapping::RowIndex:       Clone + Debug,                              
-    {
-        TriangularSolverMinorDescend::<_,_,Mapping::RowIndex,_,_>::solve( 
-                b, 
-                self.comb_codomain(), 
-                self.ring_operator(), 
-                self.order_operator_minor()  
-            )
-    }
-
-
-
-
-    /// Solve `xC = b`, where `C` is the domain COMB.
-    /// 
-    /// Solution returns entries in strictly ascending order.
-    /// 
-    /// `b` must iterate over entries in strictly ascending order.
-    pub fn solve_xc_equals_b< I >( &self, b: I ) 
-        -> 
-        // Vec< Mapping::EntryMinor >
-        TriangularSolverMajorAscend<
-                I, 
-                CombDomain< Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >, 
-                Mapping::ColIndex, 
-                RingOperator, 
-                OrderOperatorRowEntries
-            >
-        where 
-            Mapping:                    ViewRowAscend,
-            Mapping::Coefficient:      Clone,
-            I:                          IntoIterator<Item=Mapping::EntryMajor>,
-            Mapping::EntryMinor:    
-                KeyValGet< Mapping::RowIndex, Mapping::Coefficient > +
-                KeyValSet< Mapping::RowIndex, Mapping::Coefficient > + 
-                KeyValNew< Mapping::RowIndex, Mapping::Coefficient > +
-                Debug,
-            Mapping::EntryMajor: 
-                KeyValGet< Mapping::ColIndex, Mapping::Coefficient > +
-                KeyValSet< Mapping::ColIndex, Mapping::Coefficient > + 
-                KeyValNew< Mapping::ColIndex, Mapping::Coefficient > +
-                Clone,
-            RingOperator:               Clone + Semiring< Mapping::Coefficient > + Ring< Mapping::Coefficient > + DivisionRing< Mapping::Coefficient >,
-            OrderOperatorRowEntries: 
-                Clone + JudgePartialOrder<Mapping::EntryMajor>,
-            OrderOperatorColEntries:
-                Clone + JudgePartialOrder<Mapping::EntryMinor>,
-            Mapping::Coefficient:       Clone + Debug,
-            Mapping::ColIndex:       Clone + Debug,
-            Mapping::RowIndex:       Clone + Debug,                              
-    {
-        TriangularSolverMajorAscend::<_,_,Mapping::ColIndex,_,_>::solve( 
-                b, 
-                self.comb_domain(), 
-                self.ring_operator(), 
-                self.order_operator_major()  
-            )
-    }
-
-
-
-    /// Return `x = bC` by solving `x * Inverse(C) = b` where `C` is the domain COMB.
-    /// 
-    /// Solution returns entries in strictly ascending order.
-    /// 
-    /// `b` must iterate over entries in strictly ascending order.
-    /// 
-    /// **Note** It is probably more efficient than computing `bC` directly, because
-    /// the rows of `C^{-1}` are easier to compute than the columns of `C`.
-    pub fn solve_bc_ascend< I >( &self, b: I ) 
-        -> 
-        // Vec< Mapping::EntryMinor >
-        TriangularSolverMajorAscend<
-                I, 
-                CombDomainInv< Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >, 
-                Mapping::ColIndex, 
-                RingOperator, 
-                OrderOperatorRowEntries
-            >
-        where 
-            Mapping:                    ViewRowAscend,
-            Mapping::Coefficient:      Clone,
-            I:                          IntoIterator<Item=Mapping::EntryMajor>,
-            Mapping::EntryMinor:    
-                KeyValGet< Mapping::RowIndex, Mapping::Coefficient > +
-                KeyValSet< Mapping::RowIndex, Mapping::Coefficient > + 
-                KeyValNew< Mapping::RowIndex, Mapping::Coefficient > +
-                Debug,
-            Mapping::EntryMajor: 
-                KeyValGet< Mapping::ColIndex, Mapping::Coefficient > +
-                KeyValSet< Mapping::ColIndex, Mapping::Coefficient > + 
-                KeyValNew< Mapping::ColIndex, Mapping::Coefficient > +
-                Clone,
-            RingOperator:               Clone + Semiring< Mapping::Coefficient > + Ring< Mapping::Coefficient > + DivisionRing< Mapping::Coefficient >,
-            OrderOperatorRowEntries: 
-                Clone + JudgePartialOrder<Mapping::EntryMajor>,
-            OrderOperatorColEntries:
-                Clone + JudgePartialOrder<Mapping::EntryMinor>,
-            Mapping::Coefficient:       Clone + Debug,
-            Mapping::ColIndex:       Clone + Debug,
-            Mapping::RowIndex:       Clone + Debug,                              
-    {
-        TriangularSolverMajorAscend::<_,_,Mapping::ColIndex,_,_>::solve( 
-                b, 
-                self.comb_domain_inv(), 
-                self.ring_operator(), 
-                self.order_operator_major()  
-            )
-    }
-
-
-
-
-    /// Solve `Dx = b`, where `D` is the mapping matrix.
-    /// 
-    /// Returns `None` if there is no solution.
     /// 
     /// `b` must iterate over entries in strictly descending order.
     /// 
     /// # Example
     /// 
+    /// In this case the target COMB is a `2x2` identity matrix.
+    /// 
+    /// ```
+    /// use oat_rust::algebra::matrices::types::{vec_of_vec::sorted::VecOfVec, packet::MatrixAlgebraPacket};
+    /// use oat_rust::algebra::matrices::operations::{umatch::row_major::Umatch, MatrixOracleOperations};
+    /// use oat_rust::algebra::vectors::operations::VectorOperations;
+    /// 
+    /// // define inputs
+    /// let b               =   vec![ (1, 6.), (0, 6.), ];  // note: entries bust appear in descending order of index
+    /// let data            =   vec![   
+    ///                             vec![ (0, 1.),   (1, 2.)  ],
+    ///                             vec![            (1, 1.)  ],
+    ///                         ];
+    /// let data            =   VecOfVec::new( data ).ok().unwrap();
+    /// let matrix          =   MatrixAlgebraPacket::with_default_order_and_f64_coefficients( &data );
+    /// let umatch          =   Umatch::new( 
+    ///                             &matrix, 
+    ///                             (0..2).rev() 
+    ///                         );               
+    /// 
+    /// // solve
+    /// let x               =   umatch
+    ///                             .solve_tx_equals_b( b.clone() )             // solve the equation `Tx = b`
+    ///                             .ok().unwrap()                              // unwrap the solution from its enclosing Result struct
+    ///                             .collect::< Vec<(usize, f64)> >();          // collect the sparse vector entries into a Rust Vec struct
+    /// 
+    /// // calculat Tx
+    /// let tx              =   umatch
+    ///                             .target_comb()
+    ///                             .multiply_with_column_vector_reverse( x )   // adding _reverse ensures that entries of Tx are returned in reverse order of index
+    ///                             .collect::< Vec<(usize, f64)> >();          // collect the sparse vector entries into a Rust Vec struct
+    ///
+    /// // verify Tx = b
+    /// assert!( tx.eq(  &b  ) );
+    /// ```
+    pub fn solve_tx_equals_b< I >( &self, b: I ) 
+        -> 
+        // Vec< MatrixToFactor::ColumnEntry >
+        Result< 
+            TriangularSolveForColumnVectorReverse<
+                Vec< MatrixToFactor::ColumnEntry >, 
+                TargetComb< MatrixToFactor >,
+            >,
+            ()
+        >         
+    where
+        I:      IntoIterator<Item=MatrixToFactor::ColumnEntry>,
+    {
+        TriangularSolveForColumnVectorReverse::solve( 
+            b, 
+            self.target_comb(), 
+        )
+    }
+
+
+
+
+    /// Returns `x = b * Sinv`, where `Sinv` is the inverse of the source COMB.
+    /// 
+    /// Solution returns entries in strictly ascending order.
+    /// 
+    /// The entries of `b` do not have to appear in ascending order.
+    /// 
+    /// This product is computed by simplying multiplying `b * Sinv`; in the past other methods were used, see below.
+    /// 
+    /// # Design notes
+    /// 
+    /// In other situations it might have made sense to compute this vector by solving `x * S = b` via
+    /// back substitution. However, the rows of `Sinv` are easy to look up, compared to `S`
+    /// (because up to some basic transformations `Sinv` can be recovered efficiently from `Tinv *D`, where
+    /// `Tinv` is the inverse of the target COMB and `D` is the matrix we want to factor.). So we
+    /// posited that simply multiplying `x * Sinv` would be more efficient. **Future users may wish to compare these two techniques experimentally**.
+    pub fn solve_x_equals_b_times_source_comb_inverse< I >( &self, b: I ) 
+        -> 
+        // Vec< MatrixToFactor::ColumnEntry >
+        // TriangularSolveForRowVector<
+        //         I, 
+        //         SourceComb< MatrixToFactor >, 
+        //     >
+        LinearCombinationOfRows< SourceCombInverse< MatrixToFactor > >
+    where
+        I:      IntoIterator<Item=MatrixToFactor::RowEntry>,  // NB: we actually want the type to be *ROW* entries, because row entries are the onces with *COLUMN INDICES*
+    {
+        // TriangularSolveForRowVector::solve( 
+        //     b, 
+        //     self.source_comb(), 
+        // )
+        b.multiply_self_as_a_row_vector_with_matrix( self.source_comb_inverse() )
+    }
+
+
+
+    /// Return `x = bS` by solving `x * Sinv = b` where `S` is the source COMB and `Sinv` is its inverse.
+    /// 
+    /// Solution returns entries in strictly ascending order.
+    /// 
+    /// `b` must iterate over entries in strictly ascending order.
+    /// 
+    /// **Note** It is probably more efficient than computing `bS` directly, because
+    /// the rows of `Sinv` are easier to compute than the rows of `S`.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns `Err(())` if the entries of `b` are not in strictly ascending order.
+    pub fn solve_x_equals_b_times_source_comb< I >( &self, b: I ) 
+        -> 
+        // Vec< MatrixToFactor::ColumnEntry >
+        Result<
+            TriangularSolveForRowVector<
+                Vec< MatrixToFactor::RowEntry >, 
+                SourceCombInverse< MatrixToFactor >, 
+            >,
+            ()
+        >
+    where
+        I:      IntoIterator<Item=MatrixToFactor::RowEntry>,                                                            
+    {
+        TriangularSolveForRowVector::solve( 
+            b, 
+            self.source_comb_inverse(), 
+        )
+    }
+
+
+
+
+    /// Solve `Dx = b`, where `D` is the factored matrix.
+    /// 
+    /// Returns `None` if there is no solution.
+    /// 
+    /// # Arguments
+    /// 
+    /// The iterable `b` can iterate over entries in any order. 
+    /// If `b` contains multiple entries with the same index, these entries will be summed.
+    /// 
+    /// # Calculation
+    /// 
+    /// The U-match equation implies `TM = DS` implies that `TMS^{-1} = D`. It can therefore be shown that
+    /// `SM^{^-1}T^{-1}` is a generalized inverse of `D`, where `M^{-1}` is the generalized
+    /// inverse of `M` obtained by transposing and inverting nonzero entries. Therefore the solution `x`
+    /// can be computed as `SM^{^-1}T^{-1}b`.
+    /// 
+    /// # Example
+    /// 
     /// ```
     /// use oat_rust::algebra::matrices::operations::umatch::row_major::Umatch;
-    /// use oat_rust::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;        
-    /// use oat_rust::algebra::rings::operator_structs::field_prime_order::BooleanFieldOperator;        
-    /// use oat_rust::utilities::order::OrderOperatorAuto;
-    /// use itertools::Itertools;
+    /// use oat_rust::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;   
+    /// use oat_rust::algebra::matrices::types::packet::MatrixAlgebraPacket; 
+    /// use itertools::Itertools;    
     /// 
     /// // DEFINE THE MATRIX
     /// // ===============================
@@ -1141,158 +1053,124 @@ impl < Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries, 
     ///                                                     vec![                            ], 
     ///                                                     vec![                    (2,true)], 
     ///                                         ] 
-    ///                                     );
+    ///                                     ).ok().unwrap();
+    /// let matrix          =   MatrixAlgebraPacket::with_default_order_and_boolean_coefficients( &matrix );
     ///                                 
     /// // COMPUTE U-MATCH
     /// // ===============================
     ///                                 
     /// let umatch
-    ///     =   Umatch::factor(
+    ///     =   Umatch::new(
     ///             & matrix,  // the matrix we wish to factor
     ///             (0..3).rev(), // an iterator that runs over all row indices, from bottom to top
-    ///             BooleanFieldOperator::new(), // the operator for the coefficient ring
-    ///             OrderOperatorAuto, // order comparator for the entries in each row
-    ///             OrderOperatorAuto, // order comparator for the entries in each column
     ///         );        
     /// 
-    /// // SOLVE Ax = b FOR x
+    /// // SOLVE Dx = b FOR x
     /// // ===============================
     /// 
-    /// let b   =   [ (2,true), (0,true) ]; // note we list entries in reverse order
-    /// let x   =   umatch.solve_dx_equals_b( b.clone() ).unwrap().collect_vec();
-    /// let dx  =   umatch.multiply_dv(x);
-    /// assert!( dx.eq( b ) );   
+    /// let b   =   [ (0,true), (2,true) ]; 
+    /// let x   =   umatch.solve_dx_equals_b( b.clone() ).unwrap();
+    /// let dx  =   umatch.multiply_dx(x);
+    /// assert!( dx.eq( b ) );  
+    /// 
+    /// // SOLVE Dx = b FOR x (WHEN NO SOLUTION EXISTS)
+    /// // ===============================
+    /// 
+    /// let b   =   [ (1,true) ]; 
+    /// assert!( umatch.solve_dx_equals_b( b ).is_none() ); // no solution exists
     /// ```
     pub fn solve_dx_equals_b< Vector >( &self, b: Vector ) 
         -> 
-        Option< 
-            Simplify<
-                    HitMerge<
-                            Scale< 
-                                    CombDomainViewMinorDescend<
-                                            '_, 
-                                            Mapping, 
-                                            RingOperator, 
-                                            OrderOperatorRowEntries, 
-                                            OrderOperatorColEntries,
-                                        >, 
-                                    Mapping::ColIndex, 
-                                    RingOperator, 
-                                    Mapping::Coefficient, 
-                                >,
-                            ReverseOrder< OrderOperatorRowEntries >,
-                        >,
-                    Mapping::ColIndex,
-                    RingOperator,
-                    Mapping::Coefficient,
-                >
-            >
-        // TriangularSolverMinorDescend<
-        //         Vector, 
-        //         CombCodomain< Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >, 
-        //         Mapping::RowIndex, 
-        //         RingOperator, 
-        //         OrderOperatorColEntries
-        //     >
-        where 
-            Mapping:               ViewColDescend,
-            Mapping::Coefficient:       Clone,
-            Vector:                     IntoIterator<Item=Mapping::EntryMinor>,
-            Mapping::EntryMinor:    
-                KeyValGet< Mapping::RowIndex, Mapping::Coefficient > +
-                KeyValSet< Mapping::RowIndex, Mapping::Coefficient > + 
-                KeyValNew< Mapping::RowIndex, Mapping::Coefficient > +
-                Clone + Debug,
-            Mapping::EntryMajor: 
-                KeyValGet< Mapping::ColIndex, Mapping::Coefficient > +
-                KeyValSet< Mapping::ColIndex, Mapping::Coefficient > + 
-                KeyValNew< Mapping::ColIndex, Mapping::Coefficient > +
-                Clone,
-            RingOperator:               Clone + Semiring< Mapping::Coefficient > + Ring< Mapping::Coefficient > + DivisionRing< Mapping::Coefficient >,
-            OrderOperatorRowEntries: 
-                Clone + JudgePartialOrder<Mapping::EntryMajor>,
-            OrderOperatorColEntries:
-                Clone + JudgePartialOrder<Mapping::EntryMinor>,
-            Mapping::Coefficient:       Clone + Debug,
-            Mapping::ColIndex:       Clone + Debug,
-            Mapping::RowIndex:       Clone + Debug,                              
+        Option< Vec< MatrixToFactor::RowEntry > >
+    where
+        Vector:     IntoIterator<Item=MatrixToFactor::ColumnEntry>,                            
     {
-        let matching    =   self.matching_ref();
-        let comb_domain = self.comb_domain();
-        let ring_operator = self.ring_operator();
-        return self.solve_rx_equals_b(b)
-            .map(
-                |x|
-                matching.keymaj_to_keymin( & x.key() ).map( 
-                        |keymin| 
-                        (keymin, ring_operator.invert(x.val()) ) 
-                    )
-                // match matching.keymaj_to_keymin( x.key() ) {
-                //     Some( keymin ) => Some( ( keymin.clone(), x.val()  ) )
-                // }
-            )
-            .collect::< Option<Vec<_>> >()
-            .map(
-                    |x|
-                    x.multiply_matrix(
-                        |i| comb_domain.view_minor_descend(i), 
-                        self.ring_operator(), 
-                        self.order_operator_major_reverse() 
-                    )
-                )
+        let matching_inverse = self.generalized_matching_matrix_ref().generalized_inverse(self.ring_operator());
+        let matching_inverse = MatrixAlgebraPacket{
+            matrix: matching_inverse,
+            ring_operator: self.ring_operator(),
+            order_operator_for_row_entries:  OrderOperatorByKeyCustom::new(self.order_operator_for_row_indices()), // self.order_operator_for_column_entries(),//
+            order_operator_for_row_indices: self.order_operator_for_column_indices(),
+            order_operator_for_column_entries:  OrderOperatorByKeyCustom::new(self.order_operator_for_column_indices()), // self.order_operator_for_row_entries(),//
+            order_operator_for_column_indices: self.order_operator_for_row_indices(),
+        };
+        let comb_target_inverse = self.target_comb_inverse();
+        let comb_source = self.source_comb();
+
+        // multiply with T^{-1}
+        let tinv_b = comb_target_inverse.multiply_with_column_vector( b ).collect_vec();
+        
+        // check that all nonzeros occur in matched indices
+        for entry in tinv_b.iter() {
+            if matching_inverse.matrix_ref().lacks_a_match_for_column_index( & entry.key() ) {
+                // if the matching matrix does not have a match for this column index, then we cannot solve
+                // the equation `Dx = b` for this `b`
+                return None;
+            }
+        }
+        // multiply with M^{-1}
+        let minv_tinv_b = matching_inverse.multiply_with_column_vector(tinv_b).collect_vec();
+
+        // multiply with S^{-1}
+        let x = comb_source.multiply_with_column_vector( minv_tinv_b ).collect_vec();
+        
+        return Some( x )
     }
 
 
 
 
-    /// Solve `xD = b`, where `D` is the mapping matrix.
+    /// Solve `xD = b`, where `D` is the factored matrix.
     /// 
     /// # Arguments
     /// 
-    /// `b` must iterate over entries in strictly descending order.
+    /// `b` must iterate over entries in strictly ascending order.
     /// 
     /// # Returns
     /// 
-    ///  `None` if there is no solution, otherwise `Some( iter )`, where `iter` is an iterator that runs over the entries of a solution in strictly ascendnig order
+    ///  `None` if there is no solution, otherwise `Some( iter )`, where `iter` is an iterator that runs over the entries of a solution in strictly ascending order
     /// 
     /// # Solution strategry
     /// 
-    /// We solve `yM Cinv = b` for `y` and set `x = y Rinv`.  Then `xD = y Rinv D = y M Cinv = b`, where `RM = DC` is the U-match factorization.
+    /// 
+    /// We have the U-match factorization `TM = DS`, where `T` is the target COMB, `M` is the factored matrix, and `S` is the source COMB.
+    /// This equation implies that `MS^{-1} = T^{-1}D`.
+    /// Because `S^{-1}` is upper triangular, the matrix `M Sinv` is in a variation of row echelon form. 
+    /// So too is `T^{-1}D = MS^{-1}`. Thus we can solve `yT^{-1}D = b` efficiently using back-substitution (or verify that no solution exists).
+    /// We then set `x = yT^{-1}`.
+    /// 
     /// 
     /// # Example
     /// 
     /// ```
     /// use oat_rust::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
+    /// use oat_rust::algebra::matrices::types::packet::MatrixAlgebraPacket;
     /// use oat_rust::algebra::matrices::operations::umatch::row_major::Umatch;
-    /// use oat_rust::algebra::rings::operator_structs::field_prime_order::BooleanFieldOperator;
-    /// use oat_rust::utilities::order::OrderOperatorAuto;        
     /// 
-    /// // define the matrix
+    /// // Define the matrix
     /// // -----------------
     /// let d = VecOfVec::new(
-    ///         vec![
-    ///                                 vec![  (0,true), (1,true),           ],
-    ///                                 vec![            (1,true), (2,true), ],
-    ///                             ]
-    ///     );
+    ///             vec![
+    ///                 vec![  (0,true), (1,true),           ],
+    ///                 vec![            (1,true), (2,true), ],
+    ///             ]
+    ///         ).ok().unwrap();
+    /// let d = MatrixAlgebraPacket::with_default_order_and_boolean_coefficients( &d );
     /// 
-    /// // obtain a u-match factorization
+    /// // Obtain a u-match factorization
     /// // ------------------------------
-    /// let umatch  =   Umatch::factor( 
+    /// let umatch  =   Umatch::new( 
     ///     &d, 
-    ///     0..2, 
-    ///     BooleanFieldOperator::new(), 
-    ///     OrderOperatorAuto, 
-    ///     OrderOperatorAuto,             
+    ///     (0..2).rev(),             
     /// );
     /// 
-    /// // try solving xd = b
+    /// // Solve xD = b for x
     /// // ------------------
     /// 
     /// // Case 1: a solution exists; in this case we are gauaranteed to find one
     /// let x = umatch.solve_xd_equals_b( vec![ (0,true), (2,true), ] );        
     /// assert!( x.is_some() );
-    /// assert!( x.unwrap().eq( vec![ (0,true), (1,true), ] ) );
+    /// assert!( x.unwrap().eq( & vec![ (0,true), (1,true), ] ) );
     /// 
     /// // Case 2: no solution exists; in this case we get a certificate that no solution exists
     /// let x = umatch.solve_xd_equals_b( vec![ (0,true), (1,true), (2,true) ] );        
@@ -1300,79 +1178,25 @@ impl < Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries, 
     /// ```
     pub fn solve_xd_equals_b< Vector >( &self, b: Vector ) 
         -> 
-        Option< 
-            Simplify<
-                    HitMerge<
-                            Scale< 
-                                    CombCodomainInvViewMajorAscend<
-                                            Mapping, 
-                                            RingOperator, 
-                                        >, 
-                                    Mapping::RowIndex, 
-                                    RingOperator, 
-                                    Mapping::Coefficient, 
-                                >,
-                            OrderOperatorColEntries,
-                        >,
-                    Mapping::RowIndex,
-                    RingOperator,
-                    Mapping::Coefficient,
-                >
-            >
-        // TriangularSolverMinorDescend<
-        //         Vector, 
-        //         CombCodomain< Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >, 
-        //         Mapping::RowIndex, 
-        //         RingOperator, 
-        //         OrderOperatorColEntries
-        //     >
+        Option< Vec< MatrixToFactor::ColumnEntry > >
         where 
-            Mapping:                    ViewColDescend,
-            Mapping::Coefficient:      Clone,
-            Vector:                     IntoIterator<Item=Mapping::EntryMajor>,
-            Mapping::EntryMinor:    
-                KeyValGet< Mapping::RowIndex, Mapping::Coefficient > +
-                KeyValSet< Mapping::RowIndex, Mapping::Coefficient > + 
-                KeyValNew< Mapping::RowIndex, Mapping::Coefficient > +
-                Clone + Debug,
-            Mapping::EntryMajor: 
-                KeyValGet< Mapping::ColIndex, Mapping::Coefficient > +
-                KeyValSet< Mapping::ColIndex, Mapping::Coefficient > + 
-                KeyValNew< Mapping::ColIndex, Mapping::Coefficient > +
-                Clone,
-            RingOperator:               Clone + Semiring< Mapping::Coefficient > + Ring< Mapping::Coefficient > + DivisionRing< Mapping::Coefficient >,
-            OrderOperatorRowEntries: 
-                Clone + JudgePartialOrder<Mapping::EntryMajor>,
-            OrderOperatorColEntries:
-                Clone + JudgePartialOrder<Mapping::EntryMinor>,
-            Mapping::Coefficient:      Clone + Debug,
-            Mapping::ColIndex:          Clone + Debug,
-            Mapping::RowIndex:          Clone + Debug,                              
+            Vector:                     IntoIterator<Item=MatrixToFactor::RowEntry>,                             
     {
 
-        let prod        =   self.matching_ref_packet()
-                            .multiply_left( self.comb_domain_inv_packet() );
-        let matching = self.matching_ref();
-        let key_matching = |x| { matching.keymin_to_keymaj(&x) };
-        // let key_matching    =   self.matching_ref().bijection_keymin_to_keymaj();
-        EchelonSolverMajorAscendWithMajorKeys::solve(
+        let prod        =   self.target_comb_inverse()
+                            .multiply_on_the_left_of( self.matrix_to_factor_ref() );
+        let matching = self.generalized_matching_matrix_ref();
+        let key_matching = |x| { matching.row_index_for_column_index(&x) };
+        // let key_matching    =   self.generalized_matching_matrix_ref().bijection_column_indices_to_row_indices();
+        RowEchelonSolver::solve(
                     b.into_iter(),
                     prod,
                     EvaluateFunctionFnMutWrapper::new( key_matching ),
                     self.ring_operator(),
-                    self.order_operator_major(),
+                    self.order_operator_for_row_entries(),
                 )
-                .solution()
-                .map(|x| x.multiply_matrix_packet_major_ascend( self.comb_codomain_inv_packet() ) )
-        // let mut tank = Vec::new();
-        // while let Some(x) = y.next() { tank.push(x) }
-        // match y.remainder().next().is_some() {
-        //     true  => { return None }, // if there is nonzero remainder, then we have no solution
-        //     false => {
-        //         return Some( tank.multiply_matrix_packet_major_ascend( self.comb_codomain_inv_packet() ) )
-        //     }
-        // }
-
+                .solution() // returns Some(solution) if a solution exists, otherwise None
+                .map(|x| x.multiply_self_as_a_row_vector_with_matrix( self.target_comb_inverse() ).collect_vec() )
     }
 
 
@@ -1380,105 +1204,73 @@ impl < Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries, 
 
     
     
-    /// A basis for the kernel of the mapping matrix ("mapping matrix" is a term from U-match factorization)
+    /// A basis for the kernel of the factored matrix ("factored matrix" is a term from U-match factorization)
     /// 
     /// # Inputs
     /// 
-    /// `column_indices` is an iterator that runs over the columns of the mapping matrix, without repeats
+    /// `column_indices` is an iterator that runs over the columns of the factored matrix, without repeats
     /// 
     /// # Returns
     /// 
     /// An iterator that wraps around `column_indices`.  The wrapper filters out every element
-    /// of `column_indices` that indexes a nonzero column of the matching matrix; every other
-    /// element is mapped to the corresponding column of the domain COMB.
+    /// of `column_indices` that indexes a nonzero column of the generalized matching matrix; every other
+    /// element is mapped to the corresponding column of the source COMB.
     /// 
     /// # Why this works
     /// 
-    /// Every vector returned by this iterator lies in the kernel of the mapping matrix, by
-    /// the identity `RM = DC`.  The set of iterators is linearly independent because they form
+    /// Every vector returned by this iterator lies in the kernel of the factored matrix, by
+    /// the identity `TM = DS`.  The set of iterators is linearly independent because they form
     /// a subset of the columns of an invertible matrix.  The number of vectors equals the nullity
-    /// of the matrix, again by the identity `RM = DC`.  Therefore the iterator runs over a basis for the kernel.
+    /// of the matrix, again by the identity `TM = DS`.  Therefore the iterator runs over a basis for the kernel.
     pub fn kernel< ColumnIndices >( &self, column_indices: ColumnIndices ) 
         -> 
-        ViewsMinorDescend<
-                CombDomain
-                    < Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >,
+        SequenceOfReverseColumns<
+                SourceComb
+                    < MatrixToFactor >,
                 FilterOutMembers
-                    < ColumnIndices::IntoIter, & HashMap< Mapping::ColIndex, usize > >,
+                    < ColumnIndices::IntoIter, & HashMap< MatrixToFactor::ColumnIndex, usize > >,
             >
     where   
-        ColumnIndices:              IntoIterator< Item = Mapping::ColIndex >,
-        Mapping:                    IndicesAndCoefficients + ViewColDescend + ViewRowAscend,
-        Mapping::ColIndex:          Clone + Hash + std::cmp::Eq + Debug, 
-        Mapping::RowIndex:          Clone + Hash + std::cmp::Eq + Debug,     // !!! remove Debug eventually       
-        Mapping::Coefficient:      Clone + Debug,            // !!! remove Debug eventually       
-        RingOperator:               Clone + Semiring< Mapping::Coefficient > + Ring< Mapping::Coefficient > + DivisionRing< Mapping::Coefficient >,
-        Mapping::ViewMajorAscend:   Clone, // !!! remove clone
-        Mapping::EntryMinor:        Clone + Debug + 
-                                    KeyValGet< Mapping::RowIndex, Mapping::Coefficient > + 
-                                    KeyValSet< Mapping::RowIndex, Mapping::Coefficient > + 
-                                    KeyValNew< Mapping::RowIndex, Mapping::Coefficient >,
-        Mapping::EntryMajor:        Clone + 
-                                    KeyValGet< Mapping::ColIndex, Mapping::Coefficient > + 
-                                    KeyValSet< Mapping::ColIndex, Mapping::Coefficient > + 
-                                    KeyValNew< Mapping::ColIndex, Mapping::Coefficient >,
-        OrderOperatorRowEntries:    Clone + JudgePartialOrder <  Mapping::EntryMajor >, // !!! remove clone
-        OrderOperatorColEntries:    Clone + JudgePartialOrder <  Mapping::EntryMinor >,            
+        ColumnIndices:              IntoIterator< Item = MatrixToFactor::ColumnIndex >,          
 
     {
-        self.comb_domain().views_minor_descend( self.matching.filter_out_matched_minors( column_indices ) )
+        SequenceOfReverseColumns::new(
+            self.source_comb(),  
+            self.matching.filter_out_matched_column_indices( column_indices )
+        )
     }  
 
 
 
-    /// A basis for the kernel of the mapping matrix
+    /// A basis for the kernel of the factored matrix
     /// 
     /// 
     /// # Returns
     /// 
-    /// An iterator that returns a subset of the columns of the codomain COMB, which form a basis for the image.
+    /// An iterator that returns a subset of the columns of the target COMB, which form a basis for the image.
     /// 
-    /// Specifically, the iterator returns `R[:,i]` for all `i` such that `M[i,:]` is nonzero, where `R`
-    /// is the codomain COMB and `M` is the generalized matching matrix.
+    /// Specifically, the iterator returns `T[:,i]` for all `i` such that `M[i,:]` is nonzero, where `T`
+    /// is the target COMB and `M` is the generalized matching matrix.
     /// 
     /// # Why this works
     /// 
-    /// Every vector returned by this iterator lies in the image of the mapping matrix, by
-    /// the identity `RM = DC`.  The set of iterators in linearly independent because they form
+    /// Every vector returned by this iterator lies in the image of the factored matrix, by
+    /// the identity `TM = DS`.  The set of iterators in linearly independent because they form
     /// a subset of the columns of an invertible matrix.  The number of vectors equals the rank
-    /// of the matrix, again by the identity `RM = DC`.  Therefore the iterator runs over a basis for the image.
+    /// of the matrix, again by the identity `TM = DS`.  Therefore the iterator runs over a basis for the image.
     pub fn image( &self ) 
         -> 
-        ViewsMinorDescend<
-                CombCodomain
-                    < Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >,
-                Cloned< std::slice::Iter< Mapping::RowIndex > >,
-            >
-    where   
-        Mapping:                    IndicesAndCoefficients + ViewColDescend + ViewRowAscend,
-        Mapping::ColIndex:          Clone + Hash + std::cmp::Eq + Debug, 
-        Mapping::RowIndex:          Clone + Hash + std::cmp::Eq + Debug,     // !!! remove Debug eventually       
-        Mapping::Coefficient:      Clone + Debug,            // !!! remove Debug eventually       
-        RingOperator:               Clone + Semiring< Mapping::Coefficient > + Ring< Mapping::Coefficient > + DivisionRing< Mapping::Coefficient >,
-        Mapping::ViewMajorAscend:   Clone, // !!! remove clone
-        Mapping::EntryMinor:        Clone + Debug + 
-                                    KeyValGet< Mapping::RowIndex, Mapping::Coefficient > + 
-                                    KeyValSet< Mapping::RowIndex, Mapping::Coefficient > + 
-                                    KeyValNew< Mapping::RowIndex, Mapping::Coefficient >,
-        Mapping::EntryMajor:        Clone + 
-                                    KeyValGet< Mapping::ColIndex, Mapping::Coefficient > + 
-                                    KeyValSet< Mapping::ColIndex, Mapping::Coefficient > + 
-                                    KeyValNew< Mapping::ColIndex, Mapping::Coefficient >,
-        OrderOperatorRowEntries:    Clone + JudgePartialOrder <  Mapping::EntryMajor >, // !!! remove clone
-        OrderOperatorColEntries:    Clone + JudgePartialOrder <  Mapping::EntryMinor >,            
-
+        SequenceOfReverseColumns<
+                TargetComb
+                    < MatrixToFactor >,
+                Cloned< std::slice::Iter< MatrixToFactor::RowIndex > >,
+            >          
     {
-        self.comb_codomain().views_minor_descend( self.matching.bimap_maj_ref().ord_to_val_vec().iter().cloned() )
+        SequenceOfReverseColumns::new(
+            self.target_comb(),  
+            self.matching.bijection_row_indices_to_ordinals_and_inverse().vec_elements_in_order().iter().cloned()
+        )
     }      
-
-}
-
-
 
 
 
@@ -1486,87 +1278,29 @@ impl < Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries, 
     //  ---------------------------------------------------------------------------------------------------------
 
 
-impl < Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries, >  
-
-    Umatch 
-    < Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries, >  
-    
-    where   
-        Mapping:                        IndicesAndCoefficients + ViewRowAscend,
-        Mapping::ViewMajorAscend:       IntoIterator,     
-        Mapping::EntryMinor:    
-                                        KeyValGet< Mapping::RowIndex, Mapping::Coefficient > +
-                                        KeyValSet< Mapping::RowIndex, Mapping::Coefficient > + 
-                                        KeyValNew< Mapping::RowIndex, Mapping::Coefficient > +
-                                        Clone + Debug,
-        Mapping::EntryMajor: 
-                                        KeyValGet< Mapping::ColIndex, Mapping::Coefficient > +
-                                        KeyValSet< Mapping::ColIndex, Mapping::Coefficient > + 
-                                        KeyValNew< Mapping::ColIndex, Mapping::Coefficient > +
-                                        Clone,
-        Mapping::Coefficient:          Clone + Debug,
-        Mapping::ColIndex:              Clone + Debug + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingArrayWithMajorOrdinals` struct 
-        Mapping::RowIndex:              Clone + Debug + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingArrayWithMajorOrdinals` struct 
-        RingOperator:                   Clone + 
-                                        Semiring< Mapping::Coefficient > + 
-                                        Ring< Mapping::Coefficient > + 
-                                        DivisionRing< Mapping::Coefficient >,
-        OrderOperatorRowEntries: 
-                                        Clone + JudgePartialOrder<Mapping::EntryMajor>,
-        OrderOperatorColEntries:
-                                        Clone + JudgePartialOrder<Mapping::EntryMinor>,        
-{
-
-    /// Calculate the product `Dx`, where `D` is the mapping matrix.
-    pub fn multiply_vd< Vector, VectorEntry >( & self, v: Vector ) 
+    /// Calculate the product `vD`, where `D` is the factored matrix and `v` is a vector.
+    pub fn multiply_xd< Vector, VectorEntry >( & self, v: Vector ) 
         -> 
-        Simplify<
-                HitMerge<
-                        Scale< 
-                                Mapping::ViewMajorAscendIntoIter, 
-                                Mapping::ColIndex, 
-                                RingOperator, 
-                                Mapping::Coefficient, 
-                            >,
-                        OrderOperatorRowEntries,
-                    >,
-                Mapping::ColIndex,
-                RingOperator,
-                Mapping::Coefficient,
-            >
+        LinearCombinationOfRows< MatrixToFactor >
         where 
             Vector:                         IntoIterator<Item=VectorEntry>,
-            VectorEntry:                    KeyValGet< Mapping::RowIndex, Mapping::Coefficient >,        
+            VectorEntry:                    KeyValGet < Key = MatrixToFactor::RowIndex, Val = MatrixToFactor::Coefficient >,        
                              
     {
-        let matrix = |i| self.mapping.view_major_ascend(i);
-        v.multiply_matrix( matrix, self.ring_operator(), self.order_operator_major() )
+        let matrix = |i| self.matrix_to_factor.row( & i );
+        v.multiply_matrix_fnmut( matrix, self.ring_operator(), self.order_operator_for_row_entries() )
     }    
 
-    /// Calculate the product `xD`, where `D` is the mapping matrix.
-    pub fn multiply_dv< Vector, VectorEntry >( &self, v: Vector ) 
+    /// Calculate the product `Dv`, where `D` is the factored matrix and `v` is a vector.
+    pub fn multiply_dx< Vector, VectorEntry >( &self, v: Vector ) 
         -> 
-        Simplify<
-                HitMerge<
-                        Scale< 
-                                Mapping::ViewMinorDescendIntoIter, 
-                                Mapping::RowIndex, 
-                                RingOperator, 
-                                Mapping::Coefficient, 
-                            >,
-                        ReverseOrder< OrderOperatorColEntries >,
-                    >,
-                Mapping::RowIndex,
-                RingOperator,
-                Mapping::Coefficient,
-            >
+        LinearCombinationOfColumns< MatrixToFactor >
         where 
-            Mapping:                        ViewColDescend,
             Vector:                         IntoIterator<Item=VectorEntry>,
-            VectorEntry:                    KeyValGet< Mapping::ColIndex, Mapping::Coefficient >,                             
+            VectorEntry:                    KeyValGet < Key = MatrixToFactor::ColumnIndex, Val = MatrixToFactor::Coefficient >,                             
     {
-        let matrix = |i| self.mapping.view_minor_descend(i);
-        v.multiply_matrix( matrix, self.ring_operator(), self.order_operator_minor_reverse() )
+        let matrix = |i| self.matrix_to_factor.column( & i );
+        v.multiply_matrix_fnmut( matrix, self.ring_operator(), self.order_operator_for_column_entries() )
     }
 
 
@@ -1577,100 +1311,65 @@ impl < Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries, 
     //
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     //
-    // /// Calculate the product `xC`, where `C` is the domain COMB
-    // pub fn multiply_vc< Vector, VectorEntry >( & self, v: Vector ) 
+    // /// Calculate the product `xC`, where `S` is the source COMB
+    // pub fn multiply_vs< Vector, VectorEntry >( & self, v: Vector ) 
     //     -> 
     //     Simplify<
-    //             HitMerge<
+    //             IteratorsMergedInSortedOrder<
     //                     Scale< 
-    //                             CombDomainViewMajorAscend<
-    //                                     Mapping, 
-    //                                     RingOperator, 
-    //                                     OrderOperatorRowEntries, 
+    //                             SourceCombRow<
+    //                                     MatrixToFactor, 
+    //                                     MatrixToFactor::RingOperator, 
+    //                                     MatrixToFactor::OrderOperatorForRowEntries, 
     //                                 >,
-    //                             Mapping::ColIndex, 
-    //                             RingOperator, 
-    //                             Mapping::Coefficient, 
+    //                             MatrixToFactor::ColumnIndex, 
+    //                             MatrixToFactor::RingOperator, 
+    //                             MatrixToFactor::Coefficient, 
     //                         >,
-    //                     OrderOperatorRowEntries,
+    //                     MatrixToFactor::OrderOperatorForRowEntries,
     //                 >,
-    //             Mapping::ColIndex,
-    //             RingOperator,
-    //             Mapping::Coefficient,
+    //             MatrixToFactor::ColumnIndex,
+    //             MatrixToFactor::RingOperator,
+    //             MatrixToFactor::Coefficient,
     //         >
     //     where 
     //         Vector:                         IntoIterator<Item=VectorEntry>,
-    //         VectorEntry:                    KeyValGet< Mapping::RowIndex, Mapping::Coefficient >,                            
+    //         VectorEntry:                    KeyValGet < Key = MatrixToFactor::RowIndex, Val = MatrixToFactor::Coefficient >,                            
     // {
-    //     let comb_domain = self.comb_domain();        
-    //     let matrix = |i| comb_domain.view_major_ascend(i);
-    //     return v.multiply_matrix( matrix, self.ring_operator(), self.order_operator_major() )
+    //     let comb_source = self.source_comb();        
+    //     let matrix = |i| comb_source.row(i);
+    //     return v.multiply_matrix( matrix, self.ring_operator(), self.order_operator_for_row_entries() )
     // }    
 
 
 
-    /// Calculate the product `xD`, where `D` is the mapping matrix.
-    pub fn multiply_cv< Vector, VectorEntry >( &self, v: Vector ) 
-        -> 
-        Simplify<
-                HitMerge<
-                        Scale< 
-                                CombDomainViewMinorDescend<
-                                        Mapping, 
-                                        RingOperator, 
-                                        OrderOperatorRowEntries, 
-                                        OrderOperatorColEntries,
-                                    >, 
-                                Mapping::ColIndex, 
-                                RingOperator, 
-                                Mapping::Coefficient, 
-                            >,
-                        ReverseOrder< OrderOperatorRowEntries >,
-                    >,
-                Mapping::ColIndex,
-                RingOperator,
-                Mapping::Coefficient,
-            >
-        where 
-            Vector:         IntoIterator<Item=VectorEntry>,
-            VectorEntry:    KeyValGet< Mapping::ColIndex, Mapping::Coefficient >,
-            Mapping:        ViewColDescend,                             
-    {
-        let comb_domain = self.comb_domain();
-        let matrix = |i| comb_domain.view_minor_descend(i);
-        v.multiply_matrix( matrix, self.ring_operator(), self.order_operator_major_reverse() )
-    }
+    // /// Calculate the product `Sv`, where `S` is the source COMB and `v` is a vector.
+    // pub fn multiply_sv< 'a, Vector, VectorEntry >( &'a self, v: Vector ) 
+    //     -> 
+    //     LinearCombinationOfColumnsReverse< SourceComb<'a, _> >
+ 
+    //     where 
+    //         Vector:         IntoIterator<Item=VectorEntry>,
+    //         VectorEntry:    KeyValGet < Key = MatrixToFactor::ColumnIndex, Val = MatrixToFactor::Coefficient >,                          
+    // {
+    //     let comb_source = self.source_comb();
+    //     let matrix = |i| comb_source.column_reverse(i);
+    //     v.multiply_matrix_fnmut( matrix, self.ring_operator(), self.order_operator_for_row_entries_reverse() )
+    // }
 
 
-    /// Calculate the product `xD`, where `D` is the mapping matrix.
-    pub fn multiply_vc< Vector, VectorEntry >( &self, v: Vector ) 
-        -> 
-        Simplify<
-                HitMerge<
-                        Scale< 
-                                CombDomainViewMajorAscend<
-                                        Mapping, 
-                                        RingOperator, 
-                                        OrderOperatorRowEntries, 
-                                    >, 
-                                Mapping::ColIndex, 
-                                RingOperator, 
-                                Mapping::Coefficient, 
-                            >,
-                        ReverseOrder< OrderOperatorRowEntries >,
-                    >,
-                Mapping::ColIndex,
-                RingOperator,
-                Mapping::Coefficient,
-            >
-        where 
-            Vector:         IntoIterator<Item=VectorEntry>,
-            VectorEntry:    KeyValGet< Mapping::ColIndex, Mapping::Coefficient >,                          
-    {
-        let comb_domain = self.comb_domain();
-        let matrix = |i| comb_domain.view_major_ascend(i);
-        v.multiply_matrix( matrix, self.ring_operator(), self.order_operator_major_reverse() )
-    }
+    // /// Calculate the product `vS`, where `S` is the source COMB and `v` is a vector.
+    // pub fn multiply_vs< 'a, Vector, VectorEntry >( &'a self, v: Vector ) 
+    //     -> 
+    //     LinearCombinationOfRows< SourceComb< 'a, _> >
+    //     where 
+    //         Vector:         IntoIterator<Item=VectorEntry>,
+    //         VectorEntry:    KeyValGet < Key = MatrixToFactor::ColumnIndex, Val = MatrixToFactor::Coefficient >,                          
+    // {
+    //     let comb_source = self.source_comb();
+    //     let matrix = |i| comb_source.row(i);
+    //     v.multiply_matrix_fnmut( matrix, self.ring_operator(), self.order_operator_for_row_entries_reverse() )
+    // }
 
 
 
@@ -1678,23 +1377,21 @@ impl < Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries, 
 
 
 //  ---------------------------------------------------------------------------------------------------------
-//  U-MATCH -- IMPLEMENTATIONS FOR KEYMIN=KEMAJ
+//  U-MATCH -- IMPLEMENTATIONS FOR ColumnIndex == RowIndex
 //  ---------------------------------------------------------------------------------------------------------
 
 
-impl < Mapping, RingOperator, OrderOperatorRowEntries, KeyBoth, EntryBoth >  
+impl < MatrixToFactor, EntryForRowsAndColumns, IndexForRowsAndColumns >  
 
     Umatch 
-    < Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorRowEntries, >  
+    < MatrixToFactor >  
     
     where   
-        Mapping::ColIndex:                   Clone + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingArrayWithMajorOrdinals` struct
-        Mapping::RowIndex:                   Clone + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingArrayWithMajorOrdinals` struct 
-        Mapping:                           ViewRowAscend<EntryMajor = EntryBoth> + 
-                                                IndicesAndCoefficients< ColIndex=KeyBoth, RowIndex=KeyBoth >,
-        Mapping::ViewMajorAscend:          IntoIterator,
-        Mapping::EntryMajor:     KeyValGet< Mapping::ColIndex, Mapping::Coefficient >,
-        // OrderOperatorByKey<usize, Mapping::Coefficient, (usize, Mapping::Coefficient)>: JudgePartialOrder< (usize, Mapping::Coefficient)>
+        MatrixToFactor:                         MatrixAlgebra + MatrixOracle< RowEntry=EntryForRowsAndColumns, ColumnEntry=EntryForRowsAndColumns, RowIndex=IndexForRowsAndColumns >,    
+        MatrixToFactor::ColumnIndex:            Clone + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingMatrixWithSequentialOrder` struct
+        MatrixToFactor::RowIndex:               Clone + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingMatrixWithSequentialOrder` struct 
+        MatrixToFactor::RowEntry:               KeyValGet < Key = MatrixToFactor::ColumnIndex, Val = MatrixToFactor::Coefficient >,
+        // OrderOperatorByKey<usize, MatrixToFactor::Coefficient, (usize, MatrixToFactor::Coefficient)>: JudgePartialOrder< (usize, MatrixToFactor::Coefficient)>
 {
     
      
@@ -1743,7 +1440,7 @@ impl < Mapping, RingOperator, OrderOperatorRowEntries, KeyBoth, EntryBoth >
 
 #[cfg(test)]
 mod doc_test_drafts {
-    use crate::algebra::rings::operator_structs::field_prime_order::BooleanFieldOperator;
+    use crate::algebra::{matrices::types::packet::MatrixAlgebraPacket, rings::types::field_prime_order::BooleanField};
 
 
 
@@ -1751,79 +1448,76 @@ mod doc_test_drafts {
     fn doc_test_umatchrowmajor_comprehensive_tiny() {
 
         // import packages
-        use crate::algebra::matrices::operations::umatch::row_major::doc_test_drafts::BooleanFieldOperator;
+        use crate::algebra::matrices::operations::umatch::row_major::doc_test_drafts::BooleanField;
         use crate::algebra::matrices::types::{vec_of_vec::sorted::VecOfVec};
-        use crate::utilities::order::{OrderOperatorAuto};
+        
         
         use crate::algebra::matrices::operations::umatch::row_major::{Umatch};
-        use crate::algebra::matrices::operations::multiply::ProductMatrix;
-        use crate::algebra::matrices::query::{ViewRowAscend};
+        use crate::algebra::matrices::types::product::ProductMatrix;
+        use crate::algebra::matrices::query::MatrixOracle;
         
         use itertools::Itertools;
 
         // define the coefficient ring
-        let ring_operator                   =   BooleanFieldOperator::new();
+        let ring_operator                   =   BooleanField::new();
 
         // define the matrix we wish to factor
-        let num_indices_major           =   1;
-        let num_indices_minor           =   1;
-        let mapping_data              =   VecOfVec::new( 
+        let num_indices_row           =   1;
+        let num_indices_col           =   1;
+        let matrix_to_factor_data              =   VecOfVec::new( 
             vec![   
                                 vec![(0,true),], 
-                            ] );
-        let mapping                               =   & mapping_data;
+                        ] ).ok().unwrap();
+        let matrix_to_factor = MatrixAlgebraPacket::with_default_order_and_boolean_coefficients( & matrix_to_factor_data );
 
         // compute the U-match factorization
         let umatch
-            =   Umatch::factor(
-                    mapping, 
-                    (0..num_indices_major).rev(), 
-                    ring_operator, 
-                    OrderOperatorAuto::new(), 
-                    OrderOperatorAuto::new(),
+            =   Umatch::new(
+                    matrix_to_factor, 
+                    (0..num_indices_row).rev(), 
                 );
         
-        // extract R, R^{-1}, C, C^{-1}, and M
-        let matching = umatch.matching_ref();
-        let comb_codomain = umatch.comb_codomain();
-        let comb_codomain_inv = umatch.comb_codomain_inv();        
-        let comb_domain = umatch.comb_domain();        
-        let comb_domain_inv = umatch.comb_domain_inv(); 
+        // extract T, T^{-1}, S, S^{-1}, and M
+        let matching = umatch.generalized_matching_matrix_ref();
+        let comb_target = umatch.target_comb();
+        let comb_target_inv = umatch.target_comb_inverse();        
+        let comb_source = umatch.source_comb();        
+        let comb_source_inv = umatch.source_comb_inverse(); 
 
-        // get references to R, R^{-1}, C, C^{-1}, and M        
-        let comb_codomain_ref         =   & comb_codomain;
-        let comb_codomain_inv_ref         =   & comb_codomain_inv;
-        let comb_domain_ref         =   & comb_domain;
-        let comb_domain_inv_ref         =   & comb_domain_inv;   
+        // get references to T, T^{-1}, S, S^{-1}, and M        
+        let comb_target_ref         =   & comb_target;
+        let comb_target_inv_ref         =   & comb_target_inv;
+        let comb_source_ref         =   & comb_source;
+        let comb_source_inv_ref         =   & comb_source_inv;   
         
         // compute some products
-        let product_domain = ProductMatrix::new( comb_domain_ref, comb_domain_inv_ref, ring_operator, OrderOperatorAuto );
-        let product_codomain = ProductMatrix::new( comb_codomain_ref, comb_codomain_inv_ref, ring_operator, OrderOperatorAuto );        
-        let product_codomain_comb_inv_times_mapping = ProductMatrix::new( comb_codomain_inv_ref, mapping, ring_operator, OrderOperatorAuto );      
-        let product_codomain_comb_inv_times_mapping_times_domain_comb = ProductMatrix::new( product_codomain_comb_inv_times_mapping, comb_domain_ref, ring_operator, OrderOperatorAuto );                
+        let product_source = ProductMatrix::new( comb_source_ref, comb_source_inv_ref );
+        let product_target = ProductMatrix::new( comb_target_ref, comb_target_inv_ref );        
+        let product_target_comb_inv_times_matrix_to_factor = ProductMatrix::new( comb_target_inv_ref, matrix_to_factor );      
+        let product_target_comb_inv_times_matrix_to_factor_times_source_comb = ProductMatrix::new( product_target_comb_inv_times_matrix_to_factor, comb_source_ref );                
 
 
-        // check that the product of the domain COMB with its inverse is identity: C * C^{-1} = I
-        for keymin in 0 .. num_indices_minor { 
+        // check that the product of the source COMB with its inverse is identity: S * S^{-1} = I
+        for column_index in 0 .. num_indices_col { 
             assert_eq!(
-                product_domain.view_major_ascend( keymin ).collect_vec(),
-                vec![ (keymin, true) ]
+                product_source.row( & column_index ).collect_vec(),
+                vec![ (column_index, true) ]
             ) 
         }
 
-        // check that the product of the codomain COMB with its inverse is identity R * R^{-1} = I
-        for keymaj in 0 .. num_indices_major { 
+        // check that the product of the target COMB with its inverse is identity T * T^{-1} = I
+        for row_index in 0 .. num_indices_row { 
             assert_eq!(
-                product_codomain.view_major_ascend( keymaj ).collect_vec(),
-                vec![ (keymaj, true) ]
+                product_target.row( &row_index ).collect_vec(),
+                vec![ (row_index, true) ]
             ) 
         }    
         
-        // check the factorization R^{-1} * D * C = M
-        for keymaj in 0 .. num_indices_major { 
+        // check the factorization T^{-1} * D * S = M
+        for row_index in 0 .. num_indices_row { 
             assert_eq!(
-                product_codomain_comb_inv_times_mapping_times_domain_comb.view_major_ascend( keymaj ).collect_vec(),
-                matching.view_major_ascend( keymaj ).collect_vec()
+                product_target_comb_inv_times_matrix_to_factor_times_source_comb.row( &row_index ).collect_vec(),
+                matching.row( &row_index ).collect_vec()
             ) 
         }     
 
@@ -1835,80 +1529,77 @@ mod doc_test_drafts {
     fn doc_test_umatchrowmajor_comprehensive_tiny_waist() {
 
         // import packages
-        use crate::algebra::matrices::operations::umatch::row_major::doc_test_drafts::BooleanFieldOperator;
+        use crate::algebra::matrices::operations::umatch::row_major::doc_test_drafts::BooleanField;
         use crate::algebra::matrices::types::{vec_of_vec::sorted::VecOfVec};
-        use crate::utilities::order::{OrderOperatorAuto};
+        
         
         use crate::algebra::matrices::operations::umatch::row_major::{Umatch};
-        use crate::algebra::matrices::operations::multiply::ProductMatrix;
-        use crate::algebra::matrices::query::{ViewRowAscend};
+        use crate::algebra::matrices::types::product::ProductMatrix;
+        use crate::algebra::matrices::query::MatrixOracle;
         
         use itertools::Itertools;
 
         // define the coefficient ring
-        let ring_operator                   =   BooleanFieldOperator::new();
+        let ring_operator                   =   BooleanField::new();
 
         // define the matrix we wish to factor
-        let num_indices_major           =   2;
-        let num_indices_minor           =   1;
-        let mapping_data              =   VecOfVec::new( 
+        let num_indices_row           =   2;
+        let num_indices_col           =   1;
+        let matrix_to_factor_data              =   VecOfVec::new( 
             vec![   
                                 vec![(0,true),], 
                                 vec![(0,true),],                                 
-                            ] );
-        let mapping                               =   & mapping_data;
+                            ] ).ok().unwrap();
+        let matrix_to_factor = MatrixAlgebraPacket::with_default_order_and_boolean_coefficients( & matrix_to_factor_data );
 
         // compute the U-match factorization
         let umatch
-            =   Umatch::factor(
-                    mapping, 
-                    (0..num_indices_major).rev(), 
-                    ring_operator, 
-                    OrderOperatorAuto::new(), 
-                    OrderOperatorAuto::new(),
+            =   Umatch::new(
+                    matrix_to_factor, 
+                    (0..num_indices_row).rev(), 
                 );
         
-        // extract R, R^{-1}, C, C^{-1}, and M
-        let matching = umatch.matching_ref();
-        let comb_codomain = umatch.comb_codomain();
-        let comb_codomain_inv = umatch.comb_codomain_inv();        
-        let comb_domain = umatch.comb_domain();        
-        let comb_domain_inv = umatch.comb_domain_inv(); 
+        // extract T, T^{-1}, S, S^{-1}, and M
+        let matching = umatch.generalized_matching_matrix_ref();
+        let comb_target = umatch.target_comb();
+        let comb_target_inv = umatch.target_comb_inverse();        
+        let comb_source = umatch.source_comb();        
+        let comb_source_inv = umatch.source_comb_inverse(); 
 
-        // get references to R, R^{-1}, C, C^{-1}, and M        
-        let comb_codomain_ref         =   & comb_codomain;
-        let comb_codomain_inv_ref         =   & comb_codomain_inv;
-        let comb_domain_ref         =   & comb_domain;
-        let comb_domain_inv_ref         =   & comb_domain_inv;   
+        // get references to T, T^{-1}, S, S^{-1}, and M        
+        let comb_target_ref         =   & comb_target;
+        let comb_target_inv_ref         =   & comb_target_inv;
+        let comb_source_ref         =   & comb_source;
+        let comb_source_inv_ref         =   & comb_source_inv;   
         
         // compute some products
-        let product_domain = ProductMatrix::new( comb_domain_ref, comb_domain_inv_ref, ring_operator, OrderOperatorAuto );
-        let product_codomain = ProductMatrix::new( comb_codomain_ref, comb_codomain_inv_ref, ring_operator, OrderOperatorAuto );        
-        let product_codomain_comb_inv_times_mapping = ProductMatrix::new( comb_codomain_inv_ref, mapping, ring_operator, OrderOperatorAuto );      
-        let product_codomain_comb_inv_times_mapping_times_domain_comb = ProductMatrix::new( product_codomain_comb_inv_times_mapping, comb_domain_ref, ring_operator, OrderOperatorAuto );                
+        let product_source = ProductMatrix::new( comb_source_ref, comb_source_inv_ref );
+        let product_target = ProductMatrix::new( comb_target_ref, comb_target_inv_ref );        
+        let product_target_comb_inv_times_matrix_to_factor = ProductMatrix::new( comb_target_inv_ref, matrix_to_factor );      
+        let product_target_comb_inv_times_matrix_to_factor_times_source_comb = ProductMatrix::new( product_target_comb_inv_times_matrix_to_factor, comb_source_ref );                
 
 
-        // check that the product of the domain COMB with its inverse is identity: C * C^{-1} = I
-        for keymin in 0 .. num_indices_minor { 
+        // check that the product of the source COMB with its inverse is identity: S * S^{-1} = I
+        for column_index in 0 .. num_indices_col { 
             assert_eq!(
-                product_domain.view_major_ascend( keymin ).collect_vec(),
-                vec![ (keymin, true) ]
+                product_source.row( & column_index ).collect_vec(),
+                vec![ (column_index, true) ]
             ) 
         }
 
-        // check that the product of the codomain COMB with its inverse is identity R * R^{-1} = I
-        for keymaj in 0 .. num_indices_major { 
+        // check that the product of the target COMB with its inverse is identity T * T^{-1} = I
+        for row_index in 0 .. num_indices_row { 
             assert_eq!(
-                product_codomain.view_major_ascend( keymaj ).collect_vec(),
-                vec![ (keymaj, true) ]
+                product_target.row( & row_index ).collect_vec(),
+                vec![ (row_index, true) ]
             ) 
         }    
         
-        // check the factorization R^{-1} * D * C = M
-        for keymaj in 0 .. num_indices_major { 
+        // check the factorization T^{-1} * D * S = M
+        for row_index in 0 .. num_indices_row { 
             assert_eq!(
-                product_codomain_comb_inv_times_mapping_times_domain_comb.view_major_ascend( keymaj ).collect_vec(),
-                matching.view_major_ascend( keymaj ).collect_vec()
+                product_target_comb_inv_times_matrix_to_factor_times_source_comb.row( &row_index ).collect_vec(),
+                matching.row( & row_index ).collect_vec()
             ) 
         }     
 
@@ -1922,79 +1613,76 @@ mod doc_test_drafts {
     fn doc_test_umatchrowmajor_comprehensive_tiny_height() {
 
         // import packages
-        use crate::algebra::matrices::operations::umatch::row_major::doc_test_drafts::BooleanFieldOperator;
+        use crate::algebra::matrices::operations::umatch::row_major::doc_test_drafts::BooleanField;
         use crate::algebra::matrices::types::{vec_of_vec::sorted::VecOfVec};
-        use crate::utilities::order::{OrderOperatorAuto};
+        
         
         use crate::algebra::matrices::operations::umatch::row_major::{Umatch};
-        use crate::algebra::matrices::operations::multiply::ProductMatrix;
-        use crate::algebra::matrices::query::{ViewRowAscend};
+        use crate::algebra::matrices::types::product::ProductMatrix;
+        use crate::algebra::matrices::query::MatrixOracle;
         
         use itertools::Itertools;
 
         // define the coefficient ring
-        let ring_operator                   =   BooleanFieldOperator::new();
+        let ring_operator                   =   BooleanField::new();
 
         // define the matrix we wish to factor
-        let num_indices_major           =   1;
-        let num_indices_minor           =   2;
-        let mapping_data              =   VecOfVec::new( 
+        let num_indices_row           =   1;
+        let num_indices_col           =   2;
+        let matrix_to_factor_data              =   VecOfVec::new( 
             vec![   
                                 vec![(0,true), (1,true)], 
-                            ] );
-        let mapping                               =   & mapping_data;
+                            ] ).ok().unwrap();
+        let matrix_to_factor                 =   MatrixAlgebraPacket::with_default_order_and_boolean_coefficients( & matrix_to_factor_data );
 
         // compute the U-match factorization
         let umatch
-            =   Umatch::factor(
-                    mapping, 
-                    (0..num_indices_major).rev(), 
-                    ring_operator, 
-                    OrderOperatorAuto::new(), 
-                    OrderOperatorAuto::new(),
+            =   Umatch::new(
+                    matrix_to_factor, 
+                    (0..num_indices_row).rev(), 
                 );
         
-        // extract R, R^{-1}, C, C^{-1}, and M
-        let matching = umatch.matching_ref();
-        let comb_codomain = umatch.comb_codomain();
-        let comb_codomain_inv = umatch.comb_codomain_inv();        
-        let comb_domain = umatch.comb_domain();        
-        let comb_domain_inv = umatch.comb_domain_inv(); 
+        // extract T, T^{-1}, S, S^{-1}, and M
+        let matching = umatch.generalized_matching_matrix_ref();
+        let comb_target = umatch.target_comb();
+        let comb_target_inv = umatch.target_comb_inverse();        
+        let comb_source = umatch.source_comb();        
+        let comb_source_inv = umatch.source_comb_inverse(); 
 
-        // get references to R, R^{-1}, C, C^{-1}, and M        
-        let comb_codomain_ref         =   & comb_codomain;
-        let comb_codomain_inv_ref         =   & comb_codomain_inv;
-        let comb_domain_ref         =   & comb_domain;
-        let comb_domain_inv_ref         =   & comb_domain_inv;   
+        // get references to T, T^{-1}, S, S^{-1}, and M        
+        let comb_target_ref         =   & comb_target;
+        let comb_target_inv_ref         =   & comb_target_inv;
+        let comb_source_ref         =   & comb_source;
+        let comb_source_inv_ref         =   & comb_source_inv;   
         
         // compute some products
-        let product_domain = ProductMatrix::new( comb_domain_ref, comb_domain_inv_ref, ring_operator, OrderOperatorAuto );
-        let product_codomain = ProductMatrix::new( comb_codomain_ref, comb_codomain_inv_ref, ring_operator, OrderOperatorAuto );        
-        let product_codomain_comb_inv_times_mapping = ProductMatrix::new( comb_codomain_inv_ref, mapping, ring_operator, OrderOperatorAuto );      
-        let product_codomain_comb_inv_times_mapping_times_domain_comb = ProductMatrix::new( product_codomain_comb_inv_times_mapping, comb_domain_ref, ring_operator, OrderOperatorAuto );                
+        let product_source = ProductMatrix::new( comb_source_ref, comb_source_inv_ref );
+        let product_target = ProductMatrix::new( comb_target_ref, comb_target_inv_ref );        
+        let product_target_comb_inv_times_matrix_to_factor = ProductMatrix::new( comb_target_inv_ref, matrix_to_factor );      
+        let product_target_comb_inv_times_matrix_to_factor_times_source_comb = ProductMatrix::new( product_target_comb_inv_times_matrix_to_factor, comb_source_ref );                
 
 
-        // check that the product of the domain COMB with its inverse is identity: C * C^{-1} = I
-        for keymin in 0 .. num_indices_minor { 
+        // check that the product of the source COMB with its inverse is identity: S * S^{-1} = I
+        for column_index in 0 .. num_indices_col { 
             assert_eq!(
-                product_domain.view_major_ascend( keymin ).collect_vec(),
-                vec![ (keymin, true) ]
+                product_source.row( & column_index ).collect_vec(),
+                vec![ (column_index, true) ]
             ) 
         }
 
-        // check that the product of the codomain COMB with its inverse is identity R * R^{-1} = I
-        for keymaj in 0 .. num_indices_major { 
+        // check that the product of the target COMB with its inverse is identity T * T^{-1} = I
+        for row_index in 0 .. num_indices_row { 
             assert_eq!(
-                product_codomain.view_major_ascend( keymaj ).collect_vec(),
-                vec![ (keymaj, true) ]
+                product_target.row( &row_index ).collect_vec(),
+                vec![ (row_index, true) ]
             ) 
         }    
         
-        // check the factorization R^{-1} * D * C = M
-        for keymaj in 0 .. num_indices_major { 
+        // check the factorization T^{-1} * D * S = M
+        for row_index in 0 .. num_indices_row { 
             assert_eq!(
-                product_codomain_comb_inv_times_mapping_times_domain_comb.view_major_ascend( keymaj ).collect_vec(),
-                matching.view_major_ascend( keymaj ).collect_vec()
+                product_target_comb_inv_times_matrix_to_factor_times_source_comb.row( &row_index ).collect_vec(),
+                matching.row( &row_index ).collect_vec()
             ) 
         }     
 
@@ -2008,81 +1696,78 @@ mod doc_test_drafts {
     fn doc_test_umatchrowmajor_comprehensive_small() {
 
         // import packages
-        use crate::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;
+        use crate::algebra::rings::types::field_prime_order::PrimeOrderField;
         use crate::algebra::matrices::types::{vec_of_vec::sorted::VecOfVec};
-        use crate::utilities::order::{OrderOperatorAuto};
+        
         
         use crate::algebra::matrices::operations::umatch::row_major::{Umatch};
-        use crate::algebra::matrices::operations::multiply::ProductMatrix;
-        use crate::algebra::matrices::query::{ViewRowAscend};
+        use crate::algebra::matrices::types::product::ProductMatrix;
+        use crate::algebra::matrices::query::MatrixOracle;
         
         use itertools::Itertools;
 
         // define the coefficient ring
         let modulus                     =   5;
-        let ring_operator                   =   PrimeOrderFieldOperator::new( modulus );        
+        let ring_operator                   =   PrimeOrderField::new( modulus );        
 
         // define the matrix we wish to factor
-        let num_indices_major           =   2;
-        let num_indices_minor           =   3;
-        let mapping_data              =   VecOfVec::new( 
+        let num_indices_row           =   2;
+        let num_indices_col           =   3;
+        let matrix_to_factor_data              =   VecOfVec::new( 
             vec![   
                                 vec![(0,1), (1,2), (2,3)], 
                                 vec![              (2,1)]  
-                            ] );
-        let mapping                               =   & mapping_data;
+                            ] ).ok().unwrap();
+        let matrix_to_factor = MatrixAlgebraPacket::with_default_order( & matrix_to_factor_data, ring_operator.clone() );
 
         // compute the U-match factorization
         let umatch
-            =   Umatch::factor(
-                    mapping, 
-                    (0..num_indices_major).rev(), 
-                    ring_operator, 
-                    OrderOperatorAuto::new(), 
-                    OrderOperatorAuto::new(),
+            =   Umatch::new(
+                    matrix_to_factor, 
+                    (0..num_indices_row).rev(), 
                 );
         
-        // extract R, R^{-1}, C, C^{-1}, and M
-        let matching = umatch.matching_ref();
-        let comb_codomain = umatch.comb_codomain();
-        let comb_codomain_inv = umatch.comb_codomain_inv();        
-        let comb_domain = umatch.comb_domain();        
-        let comb_domain_inv = umatch.comb_domain_inv(); 
+        // extract T, T^{-1}, S, S^{-1}, and M
+        let matching = umatch.generalized_matching_matrix_ref();
+        let comb_target = umatch.target_comb();
+        let comb_target_inv = umatch.target_comb_inverse();        
+        let comb_source = umatch.source_comb();        
+        let comb_source_inv = umatch.source_comb_inverse(); 
 
-        // get references to R, R^{-1}, C, C^{-1}, and M        
-        let comb_codomain_ref         =   & comb_codomain;
-        let comb_codomain_inv_ref         =   & comb_codomain_inv;
-        let comb_domain_ref         =   & comb_domain;
-        let comb_domain_inv_ref         =   & comb_domain_inv;   
+        // get references to T, T^{-1}, S, S^{-1}, and M        
+        let comb_target_ref         =   & comb_target;
+        let comb_target_inv_ref         =   & comb_target_inv;
+        let comb_source_ref         =   & comb_source;
+        let comb_source_inv_ref         =   & comb_source_inv;   
         
         // compute some products
-        let product_domain = ProductMatrix::new( comb_domain_ref, comb_domain_inv_ref, ring_operator, OrderOperatorAuto );
-        let product_codomain = ProductMatrix::new( comb_codomain_ref, comb_codomain_inv_ref, ring_operator, OrderOperatorAuto );        
-        let product_codomain_comb_inv_times_mapping = ProductMatrix::new( comb_codomain_inv_ref, mapping, ring_operator, OrderOperatorAuto );      
-        let product_codomain_comb_inv_times_mapping_times_domain_comb = ProductMatrix::new( product_codomain_comb_inv_times_mapping, comb_domain_ref, ring_operator, OrderOperatorAuto );                
+        let product_source = ProductMatrix::new( comb_source_ref, comb_source_inv_ref );
+        let product_target = ProductMatrix::new( comb_target_ref, comb_target_inv_ref );        
+        let product_target_comb_inv_times_matrix_to_factor = ProductMatrix::new( comb_target_inv_ref, matrix_to_factor );      
+        let product_target_comb_inv_times_matrix_to_factor_times_source_comb = ProductMatrix::new( product_target_comb_inv_times_matrix_to_factor, comb_source_ref );                
 
 
-        // check that the product of the domain COMB with its inverse is identity: C * C^{-1} = I
-        for keymin in 0 .. num_indices_minor { 
+        // check that the product of the source COMB with its inverse is identity: S * S^{-1} = I
+        for column_index in 0 .. num_indices_col { 
             assert_eq!(
-                product_domain.view_major_ascend( keymin ).collect_vec(),
-                vec![ (keymin, 1) ]
+                product_source.row( & column_index ).collect_vec(),
+                vec![ (column_index, 1) ]
             ) 
         }
 
-        // check that the product of the codomain COMB with its inverse is identity R * R^{-1} = I
-        for keymaj in 0 .. num_indices_major { 
+        // check that the product of the target COMB with its inverse is identity T * T^{-1} = I
+        for row_index in 0 .. num_indices_row { 
             assert_eq!(
-                product_codomain.view_major_ascend( keymaj ).collect_vec(),
-                vec![ (keymaj, 1) ]
+                product_target.row( &row_index ).collect_vec(),
+                vec![ (row_index, 1) ]
             ) 
         }    
         
-        // check the factorization R^{-1} * D * C = M
-        for keymaj in 0 .. num_indices_major { 
+        // check the factorization T^{-1} * D * S = M
+        for row_index in 0 .. num_indices_row { 
             assert_eq!(
-                product_codomain_comb_inv_times_mapping_times_domain_comb.view_major_ascend( keymaj ).collect_vec(),
-                matching.view_major_ascend( keymaj ).collect_vec()
+                product_target_comb_inv_times_matrix_to_factor_times_source_comb.row( &row_index ).collect_vec(),
+                matching.row( &row_index ).collect_vec()
             ) 
         }     
 
@@ -2098,77 +1783,77 @@ mod doc_test_drafts {
 
 #[cfg(test)]
 mod unit_tests {
-    use std::{iter::Cloned};
+    
 
     use itertools::{assert_equal, Itertools};
 
-    use crate::{algebra::{matrices::{display::print_indexed_major_views, operations::{multiply::vector_matrix_multiply_major_ascend_simplified}, }}, utilities::order::{is_sorted_strictly}};
-    use crate::algebra::matrices::debug::verify_viewmajorascend_compatible_with_viewminordescend;
+    use crate::algebra::matrices::{debug::{matrix_oracle_is_internally_consistent, matrix_order_operators_are_internally_consistent}, operations::{multiply::multiply_row_vector_with_matrix, MatrixOracleOperations} };
+    use crate::algebra::matrices::debug::verify_rows_compatible_with_columns;
     
-    use crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
+    use crate::algebra::matrices::types::{vec_of_vec::sorted::VecOfVec, packet::MatrixAlgebraPacket};
      
-    use crate::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;
+    use crate::algebra::rings::types::field_prime_order::PrimeOrderField;
 
 
 
-    //  ===================================================================================
-    //  CONSTRUCTION OF PIVOT BLOCK OF INVERSE OF THE CODOMAIN COMB
-    //  ===================================================================================    
+//     //  ===================================================================================
+//     //  CONSTRUCTION OF PIVOT BLOCK OF INVERSE OF THE CODOMAIN COMB
+//     //  ===================================================================================    
 
     
 
-    /// This test targets the initial computation of the pivot block of the inverse of the codomain COMB.
-    #[cfg(test)]
+    /// This test targets the initial computation of the pivot block of the inverse of the target COMB.
+    #[test]
     fn test_initial_decomposition() {
-        use crate::algebra::matrices::operations::umatch::row_major::get_codomain_comb_inv_off_diag_pivot_block;
+        use crate::algebra::matrices::operations::umatch::row_major::get_pivot_block_of_target_comb_inverse_with_deleted_diagonal;
         use crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
-        use crate::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;
-        use crate::utilities::order::OrderOperatorAuto;
+        use crate::algebra::rings::types::field_prime_order::PrimeOrderField;
 
-        let mapping       =   VecOfVec::new(
+        let matrix_to_factor       =   VecOfVec::new(
                                             vec![
                                                 vec![ (0, 1), (1, 1) ],
                                                 vec![ (0, 1), (1, 1) ],
                                                 vec![ (0, 1), (1, 1) ],                                                
                                             ]
-                                        );
-        let iter_keymaj         = (0..2).rev();
-        let ring_operator       =   PrimeOrderFieldOperator::new(5);
+                                        ).ok().unwrap();
+        let ring_operator       =   PrimeOrderField::new(5);
+        let matrix_to_factor_packet     =   MatrixAlgebraPacket::with_default_order( & matrix_to_factor, ring_operator);
+
+        let row_indices_in_reverse_order         = (0..2).rev();
         
-        let _codomain_comb_inv_pivot_block = get_codomain_comb_inv_off_diag_pivot_block(
-                                            & (& mapping),
-                                            iter_keymaj,
-                                            ring_operator,
-                                            OrderOperatorAuto,
-                                            // OrderOperatorAuto,
+        let _target_comb_inv_pivot_block = get_pivot_block_of_target_comb_inverse_with_deleted_diagonal(
+                                            & matrix_to_factor_packet,
+                                            row_indices_in_reverse_order,
                                         );       
                                         
-        // println!("{:?}", & codomain_comb_inv_pivot_block.0);
-        // println!("{:?}", & codomain_comb_inv_pivot_block.1);        
+        println!("{:#?}", & _target_comb_inv_pivot_block.0);
+        println!("{:#?}", & _target_comb_inv_pivot_block.1);        
     }
 
 
-    /// This test targets the initial computation of the pivot block of the inverse of the codomain COMB.    
+    /// This test targets the initial computation of the pivot block of the inverse of the target COMB.    
     #[test]
     fn test_initial_decomposition_another_example() {
         use itertools::Itertools;
 
-        use crate::algebra::matrices::operations::umatch::row_major::get_codomain_comb_inv_off_diag_pivot_block;
+        use crate::algebra::matrices::query::MatrixOracle;
+        use crate::algebra::matrices::operations::umatch::row_major::get_pivot_block_of_target_comb_inverse_with_deleted_diagonal;
                 
-        use crate::algebra::matrices::operations::invert::InverseOfTriangularArrayLazyAscending;
-        use crate::algebra::matrices::operations::transform_vector_wise::VecWiseTransformed;
+        use crate::algebra::matrices::operations::invert::InverseUpperTriangularMatrix;
         
         use crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
-        use crate::algebra::matrices::query::ViewRowAscend;
-        use crate::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;
-        use crate::utilities::order::{OrderOperatorByKey, OrderOperatorAuto};
-        
+        use crate::algebra::rings::types::field_prime_order::PrimeOrderField;
+        use crate::utilities::order::{OrderOperatorByKey};
 
-        use std::slice::Iter;
 
+        // set some parameters
         let matrix_size = 5;
+        let max_column_index = matrix_size - 1;
         let modulus = 7;
-        let mapping = VecOfVec::new(
+        let ring_operator       =   PrimeOrderField::new( modulus );        
+
+        // define the matrix
+        let matrix_to_factor = VecOfVec::new(
                                     vec![
                                         vec![(0, 1), (1, 2),                 (4, 0)],
                                         vec![        (1, 1), (2, 0),         (4, 1)],
@@ -2176,73 +1861,59 @@ mod unit_tests {
                                         vec![                        (3, 1), (4, 0)],
                                         vec![                                (4, 1)],
                                     ]
-                                );
-        let array_mapping_ref = & mapping;
-        let iter_keymaj         = (0 .. matrix_size).rev();
-        let ring_operator       =   PrimeOrderFieldOperator::new( modulus );
+                                ).ok().unwrap();
+        let matrix_to_factor_packet  =   MatrixAlgebraPacket::with_default_order( &matrix_to_factor, ring_operator.clone() );
+
+        // make a copy of the matrix with same set of columns but in reversed order
+        let mut flipped_vertically = matrix_to_factor.clone();
+        flipped_vertically.reverse_the_sequence_of_columns_in_place(max_column_index);
+        let flipped_vertically_packet  =   MatrixAlgebraPacket::with_default_order( &flipped_vertically, ring_operator.clone() );
+
+
+        let row_indices_in_reverse_order         = (0 .. matrix_size).rev();
 
         // compute the inverse
-        let inverse =   InverseOfTriangularArrayLazyAscending::new( 
-            & array_mapping_ref,
-            ring_operator,
-            OrderOperatorByKey::new(),
-        );    
+        let inverse =   InverseUpperTriangularMatrix::new( & matrix_to_factor_packet );    
         
-        // let `mapping_transformed` be the matrix obtained by reversing the order of columns of `mapping`
-        let vector_transformer = |x: Cloned< Iter< '_, (usize,usize) > >| 
-                                                                    x
-                                                                        .rev()
-                                                                        .map(   |(a,b)| 
-                                                                                ( matrix_size - 1 - a, b) 
-                                                                            )
-                                                                        .collect_vec() ;
 
-        let mapping_transformed =   VecWiseTransformed::new( 
-                                            array_mapping_ref,
-                                            vector_transformer,
-                                        );
-
-        // compute the codomain COMB of `mapping_transformed`
+        // compute the target COMB of `matrix_to_factor_transformed`
         //
-        // NOTE: the codomain COMB of `mapping_transformed` is the inverse of `mapping`, where -- by contrast -- 
-        //       the codomain COMB of `mapping` is the identity matrix (which is less interesting)
-        let (array_comb, matching) = get_codomain_comb_inv_off_diag_pivot_block(
-            & mapping_transformed, // the matrix mapping_transformed ought to implement Copy
-            iter_keymaj,
-            ring_operator,
-            OrderOperatorAuto,
-            // OrderOperatorAuto,
+        // NOTE: the target COMB of `matrix_to_factor_transformed` is the inverse of `matrix_to_factor`, where -- by contrast -- 
+        //       the target COMB of `matrix_to_factor` is the identity matrix (which is less interesting)
+        let (array_comb, matching) = get_pivot_block_of_target_comb_inverse_with_deleted_diagonal(
+            & flipped_vertically_packet, // the matrix matrix_to_factor_transformed ought to implement Copy
+            row_indices_in_reverse_order,
         );          
 
 
-        for keymaj in 0 .. matrix_size {
+        for row_index in 0 .. matrix_size {
 
             // obtain a row of the inverse
-            let inv_row     =    inverse.view_major_ascend(keymaj).collect_vec();
+            let inv_row     =    inverse.row(&row_index).collect_vec();
 
-            // obtain a row of the codomain COMB
-            let ordmaj    =   matching.keymaj_to_ord( &keymaj ).unwrap();  
+            // obtain a row of the target COMB
+            let ordinal    =   matching.ordinal_for_row_index( &row_index ).unwrap();  
 
             let comb_off_diag_view =    (& array_comb)
-                                        .view_major_ascend( ordmaj )
+                                        .row( &ordinal )
                                         // .iter()
                                         .map(   | (x,y)| 
-                                                ( matching.ord_to_keymaj( x ), y ) // reindex the row from ordinals to major keys
+                                                ( matching.row_index_for_ordinal( x ), y ) // reindex the row from ordinals to row indices
                                             );
             let mut comb_view   =   comb_off_diag_view.collect_vec();
-            comb_view.push( (keymaj, 1) );
+            comb_view.push( (row_index, 1) );
             comb_view.sort();       
             
             // compute products
-            let product_inv=   vector_matrix_multiply_major_ascend_simplified(
+            let product_inv=   multiply_row_vector_with_matrix(
                                                                         inv_row.clone(),
-                                                                        & mapping_transformed,
+                                                                        & flipped_vertically_packet,
                                                                         ring_operator,
                                                                         OrderOperatorByKey::new()
                                                                     );
-            let product_umatch=   vector_matrix_multiply_major_ascend_simplified(
+            let product_umatch=   multiply_row_vector_with_matrix(
                                                                         comb_view.clone(),
-                                                                        & mapping_transformed,
+                                                                        & flipped_vertically_packet,
                                                                         ring_operator,
                                                                         OrderOperatorByKey::new()
                                                                     );                                                                    
@@ -2250,9 +1921,9 @@ mod unit_tests {
 
             // compare
             // println!("MATRIX:");
-            for k in 0 .. matrix_size { println!("{:?}", array_mapping_ref.view_major_ascend(k).collect_vec()  ) }
+            for k in 0 .. matrix_size { println!("{:?}", matrix_to_factor_packet.row(&k).collect_vec()  ) }
             // println!("MATRIX TRANSFORMED:");
-            for k in 0 .. matrix_size { println!("{:?}", mapping_transformed.view_major_ascend(k)  ) }            
+            for k in 0 .. matrix_size { println!("{:?}", flipped_vertically_packet.row(&k)  ) }            
             // println!("product_inv: {:?}", product_inv.clone().collect_vec() );
             // println!("product_umatch: {:?}", product_umatch.clone().collect_vec());            
             // println!("COMB row len: {:?}, inv row len{:?}", comb_view.len(), inv_row.len());
@@ -2264,99 +1935,84 @@ mod unit_tests {
     }    
 
 
-    /// This test targets the initial computation of the pivot block of the inverse of the codomain COMB.
+    /// This test targets the initial computation of the pivot block of the inverse of the target COMB.
     ///
     /// The key idea of this test is the following fact: let M be a square upper-unitriangular matrix,
     /// and let N be the matrix obtained by reversing the order of columns of M.  Then the standard
-    /// "cohomology algorithm," applied to N, produces a codomain COMB equal to M^{-1}.
+    /// "cohomology algorithm," applied to N, produces a target COMB equal to M^{-1}.
     /// 
-    /// This test applies the standard cohomology algorithm to compute a codomain COMB of N.  We 
-    /// check to ensure that this codomain COMB equals M^{-1}.
+    /// This test applies the standard cohomology algorithm to compute a target COMB of N.  We 
+    /// check to ensure that this target COMB equals M^{-1}.
     #[test]
     fn test_initial_decomposition_larger() {
         use itertools::Itertools;
 
-        use crate::algebra::matrices::operations::umatch::row_major::get_codomain_comb_inv_off_diag_pivot_block;
+        use crate::algebra::matrices::operations::umatch::row_major::get_pivot_block_of_target_comb_inverse_with_deleted_diagonal;
                 
-        use crate::algebra::matrices::operations::invert::InverseOfTriangularArrayLazyAscending;
-        use crate::algebra::matrices::operations::transform_vector_wise::VecWiseTransformed;
-        use crate::algebra::matrices::query::ViewRowAscend;
-        use crate::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;
-        use crate::utilities::order::{OrderOperatorByKey, OrderOperatorAuto};
-        
+        use crate::algebra::matrices::operations::invert::InverseUpperTriangularMatrix;
+        use crate::algebra::matrices::query::MatrixOracle;        
+        use crate::algebra::rings::types::field_prime_order::PrimeOrderField;
+        use crate::utilities::order::OrderOperatorByKey;
 
-        use std::slice::Iter;
-
+        // set parameters
         let matrix_size     =   10;
+        let max_column_index    =   matrix_size - 1;
         let modulus             =   7;
+        let ring_operator       =   PrimeOrderField::new( modulus );        
         
-        let mapping = VecOfVec::random_mod_p_upper_unitriangular( matrix_size, modulus );
-        let array_mapping_ref = & mapping;
-        let iter_keymaj         = (0 .. matrix_size).rev();
-        let ring_operator       =   PrimeOrderFieldOperator::new( modulus );
+        // randomly generate a matrix
+        let matrix_to_factor = VecOfVec::random_mod_p_upper_unitriangular( matrix_size, modulus );
+        let matrix_to_factor_packet  =   MatrixAlgebraPacket::with_default_order( &matrix_to_factor, ring_operator.clone() );
+
+        // make a copy of the matrix with same set of columns but in reversed order
+        let mut flipped_vertically = matrix_to_factor.clone();
+        flipped_vertically.reverse_the_sequence_of_columns_in_place(max_column_index);
+        let flipped_vertically_packet  =   MatrixAlgebraPacket::with_default_order( &flipped_vertically, ring_operator.clone() );
+
 
         // compute the inverse
-        let inverse =   InverseOfTriangularArrayLazyAscending::new( 
-            & array_mapping_ref,
-            ring_operator,
-            OrderOperatorByKey::new(),
-        );    
-        
-        // let `mapping_transformed` be the matrix obtained by reversing the order of columns of `mapping`        
-        let vector_transformer = |x: Cloned< Iter< '_, (usize,usize) > >| 
-                                                                    x
-                                                                        .rev()
-                                                                        .map(   |(a,b)| 
-                                                                                ( matrix_size - 1 - a, b) 
-                                                                            )
-                                                                        .collect_vec() ;
+        let inverse =   InverseUpperTriangularMatrix::new( & matrix_to_factor_packet );    
 
-        let mapping_transformed  =   VecWiseTransformed::new( 
-                                            array_mapping_ref,
-                                            vector_transformer,
-                                        );
 
-        // compute the codomain COMB of `mapping_transformed`
+        // compute the target COMB of `matrix_to_factor_transformed`
         //
-        // NOTE: the codomain COMB of `mapping_transformed` is the inverse of `mapping`, where -- by contrast -- 
-        //       the codomain COMB of `mapping` is the identity matrix (which is less interesting)        
-        let (array_comb, matching) = get_codomain_comb_inv_off_diag_pivot_block(
-            & mapping_transformed,
-            iter_keymaj,
-            ring_operator,
-            OrderOperatorAuto,
-            // OrderOperatorAuto,
+        // NOTE: the target COMB of `matrix_to_factor_transformed` is the inverse of `matrix_to_factor`, where -- by contrast -- 
+        //       the target COMB of `matrix_to_factor` is the identity matrix (which is less interesting)
+        let row_indices_in_reverse_order         = (0 .. matrix_size).rev();                
+        let (array_comb, matching) = get_pivot_block_of_target_comb_inverse_with_deleted_diagonal(
+            & flipped_vertically_packet,
+            row_indices_in_reverse_order,
         );          
 
 
-        for keymaj in 0 .. matrix_size {
+        for row_index in 0 .. matrix_size {
 
             // obtain a row of the inverse
-            let inv_row     =    inverse.view_major_ascend(keymaj).collect_vec();
+            let inv_row     =    inverse.row(&row_index).collect_vec();
 
-            // obtain a row of the codomain COMB
-            let ordmaj    =   matching.keymaj_to_ord( &keymaj ).unwrap();
+            // obtain a row of the target COMB
+            let ordinal    =   matching.ordinal_for_row_index( &row_index ).unwrap();
 
             let comb_off_diag_view =    (& array_comb)
-                                        .view_major_ascend( ordmaj )
+                                        .row( & ordinal )
                                         // .iter()
                                         .map(   | (x,y)| 
-                                                ( matching.ord_to_keymaj( x ), y ) // reindex the row from ordinals to major keys
+                                                ( matching.row_index_for_ordinal( x ), y ) // reindex the row from ordinals to row indices
                                             );
             let mut comb_view   =   comb_off_diag_view.collect_vec();
-            comb_view.push( (keymaj, 1) );
+            comb_view.push( (row_index, 1) );
             comb_view.sort();       
             
             // compute products
-            let product_inv=   vector_matrix_multiply_major_ascend_simplified(
+            let product_inv=   multiply_row_vector_with_matrix(
                                                                         inv_row.clone(),
-                                                                        & mapping_transformed,
+                                                                        & matrix_to_factor_packet,
                                                                         ring_operator,
                                                                         OrderOperatorByKey::new()
                                                                     );
-            let product_umatch=   vector_matrix_multiply_major_ascend_simplified(
+            let product_umatch=   multiply_row_vector_with_matrix(
                                                                         comb_view.clone(),
-                                                                        & mapping_transformed,
+                                                                        & matrix_to_factor_packet,
                                                                         ring_operator,
                                                                         OrderOperatorByKey::new()
                                                                     );                                                                    
@@ -2364,9 +2020,9 @@ mod unit_tests {
 
             // compare
             // println!("MATRIX:");
-            for k in 0 .. matrix_size { println!("{:?}", array_mapping_ref.view_major_ascend(k).collect_vec()  ) }
+            for k in 0 .. matrix_size { println!("{:?}", matrix_to_factor_packet.row(&k).collect_vec()  ) }
             // println!("MATRIX TRANSFORMED:");
-            for k in 0 .. matrix_size { println!("{:?}", mapping_transformed.view_major_ascend(k)  ) }            
+            for k in 0 .. matrix_size { println!("{:?}", flipped_vertically_packet.row(&k)  ) }            
             // println!("product_inv: {:?}", product_inv.clone().collect_vec() );
             // println!("product_umatch: {:?}", product_umatch.clone().collect_vec());            
             // println!("COMB row len: {:?}, inv row len{:?}", comb_view.len(), inv_row.len());
@@ -2380,155 +2036,144 @@ mod unit_tests {
 
 
     //  ===================================================================================
-    //  RECOVERY OF MAJOR VIEWS OF COMBS -- COMPREHENSIVE
+    //  RECOVERY OF ROWS OF COMBS -- COMPREHENSIVE
     //  ===================================================================================    
 
 
     /// Checks that Umatch decomposition is correct (using a small example matrix, D) in the following sense:
-    /// R^{-1} * R = I
-    /// C^{-1} * C = I
-    /// R^{-1} * D * C = M
-    /// And the rows of R, R^{-1}, C, and C^{-1} appear in strictly ascending order
+    /// T^{-1} * T = I
+    /// S^{-1} * S = I
+    /// T^{-1} * D * S = M
+    /// And the rows of T, T^{-1}, S, and S^{-1} appear in strictly ascending order
     #[test]
     fn test_umatchrowmajor_comprehensive_small() {
-
         
-        use crate::utilities::order::{OrderOperatorAuto, OrderOperatorByKeyCutsom, };
-        
-        use crate::algebra::matrices::operations::umatch::row_major::{Umatch};
-        use crate::algebra::matrices::operations::multiply::ProductMatrix;
-        use crate::algebra::matrices::query::{ViewRowAscend, ViewColDescend};
-        use crate::utilities::iterators::is_sorted::IsSortedBy;
+        use crate::algebra::matrices::operations::umatch::row_major::Umatch;
+        use crate::algebra::matrices::types::product::ProductMatrix;
+        use crate::algebra::matrices::query::MatrixOracle;
+        use crate::algebra::matrices::display::print_indexed_rows;           
 
-        let num_indices_major           =   2;
-        let num_indices_minor           =   3;
-        // let approximate_density         =   0.3;
+        let num_indices_row             =   2;
+        let num_indices_col             =   3;
         let modulus                     =   3;
-        // let allow_nonstructural_zero         =   true;
 
-        let ring_operator           =   PrimeOrderFieldOperator::new( modulus );
-        let mapping_data       =   VecOfVec::new( 
+        let ring_operator               =   PrimeOrderField::new( modulus );
+        let matrix_to_factor_data        =   VecOfVec::new( 
             vec![   
                                 vec![(0,1), (1,2), (2,0)], 
                                 vec![              (2,0)]  
-                            ] );
-        let mapping                               =   & mapping_data;
-
-        // !!! CONSIDER CHANGING OrderOperatorAuto TO INCLUDE PHANTOM DATA WHICH FIXES THE TYPE OF THE COMPARED OBJECTS
+                            ] ).ok().unwrap();
+        let matrix_to_factor = MatrixAlgebraPacket::with_default_order( & matrix_to_factor_data, ring_operator );
 
         
-        let umatch: Umatch<
-                        &VecOfVec<usize, usize>, 
-                        PrimeOrderFieldOperator, 
-                        OrderOperatorByKeyCutsom<usize, usize, (usize, usize), OrderOperatorAuto>, 
-                        OrderOperatorByKeyCutsom<usize, usize, (usize, usize), OrderOperatorAuto>,
-                    > 
-            =   Umatch::factor(
-                    mapping, 
-                    (0..num_indices_major).rev(), 
-                    ring_operator, 
-                    OrderOperatorAuto, 
-                    OrderOperatorAuto,
-                );
+        let umatch  =   Umatch::new(
+                            matrix_to_factor, 
+                            (0..num_indices_row).rev(),
+                        );
 
 
         
 
 
         // let umatch_with_refs = UmatchRowMajorWithRefs::new( &umatch );
-        let matching = umatch.matching_ref();
+        let matching = umatch.generalized_matching_matrix_ref();
 
-        let comb_codomain = umatch.comb_codomain();
-        let comb_codomain_inv = umatch.comb_codomain_inv();        
-        let comb_domain = umatch.comb_domain();        
-        let comb_domain_inv = umatch.comb_domain_inv(); 
+        let comb_target = umatch.target_comb();
+        let comb_target_inv = umatch.target_comb_inverse();        
+        let comb_source = umatch.source_comb();        
+        let comb_source_inv = umatch.source_comb_inverse(); 
 
-        let comb_codomain_ref         =   & comb_codomain;
-        let comb_codomain_inv_ref         =   & comb_codomain_inv;
-        let comb_domain_ref         =   & comb_domain;
-        let comb_domain_inv_ref         =   & comb_domain_inv;                        
+        let comb_target_ref             =   & comb_target;
+        let comb_target_inv_ref         =   & comb_target_inv;
+        let comb_source_ref             =   & comb_source;
+        let comb_source_inv_ref         =   & comb_source_inv;                        
         
         
-        let product_domain = ProductMatrix::new( comb_domain_ref, comb_domain_inv_ref, ring_operator, OrderOperatorAuto );
-        let product_codomain = ProductMatrix::new( comb_codomain_ref, comb_codomain_inv_ref, ring_operator, OrderOperatorAuto );        
-        let product_codomain_comb_inv_times_mapping = ProductMatrix::new( comb_codomain_inv_ref, mapping, ring_operator, OrderOperatorAuto );      
-        let product_codomain_comb_inv_times_mapping_times_domain_comb = ProductMatrix::new( product_codomain_comb_inv_times_mapping, comb_domain_ref, ring_operator, OrderOperatorAuto );                
+        let product_source = ProductMatrix::new( comb_source_ref, comb_source_inv_ref );
+        let product_target = ProductMatrix::new( comb_target_ref, comb_target_inv_ref );        
+        let product_target_comb_inv_times_matrix_to_factor = ProductMatrix::new( comb_target_inv_ref, matrix_to_factor );      
+        let product_target_comb_inv_times_matrix_to_factor_times_source_comb = ProductMatrix::new( product_target_comb_inv_times_matrix_to_factor, comb_source_ref );                
 
 
-        // println!("mapping:");
-        // print_indexed_major_views( & mapping, 0 .. num_indices_major );
+        // println!("matrix_to_factor:");
+        // print_indexed_rows( & matrix_to_factor, 0 .. num_indices_row );
         // println!("matching:");
-        // print_indexed_major_views( & matching, 0 .. num_indices_major );        
-        // println!("comb_domain:");
-        // print_indexed_major_views( & comb_domain, 0 .. num_indices_minor );        
-        // println!("comb_domain_inv:");
-        // print_indexed_major_views( & comb_domain_inv, 0 .. num_indices_minor );     
-        // println!("comb_codomain:");
-        // print_indexed_major_views( & comb_codomain, 0 .. num_indices_major );        
-        // println!("comb_codomain_inv:");
-        // print_indexed_major_views( & comb_codomain_inv, 0 .. num_indices_major );    
-        // println!("comb_codomain_inv * mapping * comb_domain:");
-        // print_indexed_major_views( & product_codomain_comb_inv_times_mapping_times_domain_comb, 0 .. num_indices_major );                                
-        for column_index in 0 .. num_indices_minor {
-            // println!("{:?}", product_domain.view_major_ascend( column_index ).collect_vec() );
-            itertools::assert_equal( product_domain.view_major_ascend( column_index ), std::iter::once( (column_index, 1) )   );
+        // print_indexed_rows( & matching, 0 .. num_indices_row );        
+        // println!("comb_source:");
+        // print_indexed_rows( & comb_source, 0 .. num_indices_col );        
+        // println!("comb_source_inv:");
+        // print_indexed_rows( & comb_source_inv, 0 .. num_indices_col );     
+        // println!("comb_target:");
+        // print_indexed_rows( & comb_target, 0 .. num_indices_row );        
+        // println!("comb_target_inv:");
+        // print_indexed_rows( & comb_target_inv, 0 .. num_indices_row );    
+        // println!("comb_target_inv * matrix_to_factor * comb_source:");
+        // print_indexed_rows( & product_target_comb_inv_times_matrix_to_factor_times_source_comb, 0 .. num_indices_row );                                
+        for column_index in 0 .. num_indices_col {
+            // println!("{:?}", product_source.row( column_index ).collect_vec() );
+            itertools::assert_equal( product_source.row( & column_index ), std::iter::once( (column_index, 1) )   );
         }
 
 
-        // check that the product of the domain COMB with its inverse is identity: C * C^{-1} = I
-        for keymin in 0 .. num_indices_minor { 
+        // check that the product of the source COMB with its inverse is identity: S * S^{-1} = I
+        for column_index in 0 .. num_indices_col { 
             assert_eq!(
-                product_domain.view_major_ascend( keymin ).collect_vec(),
-                vec![ (keymin, 1) ]
+                product_source.row( & column_index ).collect_vec(),
+                vec![ (column_index, 1) ]
             ) 
         }
 
-        // check that the product of the codomain COMB with its inverse is identity R * R^{-1} = I
-        for keymaj in 0 .. num_indices_major { 
+        // check that the product of the target COMB with its inverse is identity T * T^{-1} = I
+        for row_index in 0 .. num_indices_row { 
             assert_eq!(
-                product_codomain.view_major_ascend( keymaj ).collect_vec(),
-                vec![ (keymaj, 1) ]
+                product_target.row( &row_index ).collect_vec(),
+                vec![ (row_index, 1) ]
             ) 
         }    
         
-        // check the factorization R^{-1} * D * C = M
-        for keymaj in 0 .. num_indices_major { 
+        // check the factorization T^{-1} * D * S = M
+        for row_index in 0 .. num_indices_row { 
             assert_eq!(
-                product_codomain_comb_inv_times_mapping_times_domain_comb.view_major_ascend( keymaj ).collect_vec(),
-                matching.view_major_ascend( keymaj ).collect_vec()
+                product_target_comb_inv_times_matrix_to_factor_times_source_comb.row( &row_index ).collect_vec(),
+                matching.row( &row_index ).collect_vec()
             ) 
         }     
         
         // check that rows are sorted in strictly ascending order
-        for keymaj in 0 .. num_indices_major { 
-            assert!(    mapping.view_major_ascend( keymaj             ).is_sorted_by( |x, y| x.0 < y.0 )     );
-            assert!(    comb_codomain.view_major_ascend( keymaj       ).is_sorted_by( |x, y| x.0 < y.0 )     );
-            assert!(    comb_codomain_inv.view_major_ascend( keymaj   ).is_sorted_by( |x, y| x.0 < y.0 )     );
-            assert!(    comb_domain.view_major_ascend( keymaj         ).is_sorted_by( |x, y| x.0 < y.0 )     );
-            assert!(    comb_domain_inv.view_major_ascend( keymaj     ).is_sorted_by( |x, y| x.0 < y.0 )     );                                
+        for row_index in 0 .. num_indices_row { 
+            assert!(    matrix_to_factor.row( & row_index             ).is_sorted_by( |x, y| x.0 < y.0 )     );
+            assert!(    comb_target.row( & row_index       ).is_sorted_by( |x, y| x.0 < y.0 )     );
+            assert!(    comb_target_inv.row( & row_index   ).is_sorted_by( |x, y| x.0 < y.0 )     );
+            assert!(    comb_source.row( & row_index         ).is_sorted_by( |x, y| x.0 < y.0 )     );
+            assert!(    comb_source_inv.row( & row_index     ).is_sorted_by( |x, y| x.0 < y.0 )     );                                
         }        
         
-        // check that the major and minor views of the inverse of the codomain COMB agree
-        let comb_codomain_vec_of_vec_simple     
-            =   VecOfVec::from_iterable( (0..num_indices_major).map( |k| comb_codomain_inv.view_major_ascend(k) ) );
-        for row_index in 0..num_indices_major {
+        // check that the major and columns of the inverse of the target COMB agree
+        let comb_target_vec_of_vec_simple     
+            =   VecOfVec::from_iterable_of_iterables( 
+                    (0..num_indices_row)
+                        .map( |k| comb_target_inv.row(&k) ) 
+                ).ok().unwrap();
+        for row_index in 0..num_indices_row {
             itertools::assert_equal( 
-                    comb_codomain.view_minor_descend( row_index ),
-                    (& comb_codomain_vec_of_vec_simple).view_minor_descend( row_index )
+                    comb_target.column_reverse( & row_index ),
+                    (& comb_target_vec_of_vec_simple).column_reverse( & row_index )
                 )
         }
 
-        // check that the major and minor views of `CombCodomainInv` agree
-        let comb_codomain_inv_vec_of_vec_simple     
-            =   VecOfVec::from_iterable( (0..num_indices_major).map( |k| comb_codomain_inv.view_major_ascend(k) ) );
-        for row_index in 0..num_indices_major {
+        // check that the major and columns of `TargetCombInverse` agree
+        let comb_target_inv_vec_of_vec_simple     
+            =   VecOfVec::from_iterable_of_iterables( 
+                    (0..num_indices_row).map( |k| comb_target_inv.row(&k) ) 
+                ).ok().unwrap();
+        for row_index in 0..num_indices_row {
             // println!("PRINTING HERE: see below");
             // println!("ROW INDEX = {:?}", row_index );
-            // println!("{:?}", comb_codomain_inv.view_minor_descend( row_index ).collect_vec());
-            // println!("{:?}", (& comb_codomain_inv_vec_of_vec_simple).view_minor_descend( row_index ).collect_vec());            
+            // println!("{:?}", comb_target_inv.column_reverse( row_index ).collect_vec());
+            // println!("{:?}", (& comb_target_inv_vec_of_vec_simple).column_reverse( row_index ).collect_vec());            
             assert_equal( 
-                    comb_codomain_inv.view_minor_descend( row_index ).collect_vec(),
-                    (& comb_codomain_inv_vec_of_vec_simple).view_minor_descend( row_index ).collect_vec()
+                    comb_target_inv.column_reverse( & row_index ).collect_vec(),
+                    (& comb_target_inv_vec_of_vec_simple).column_reverse( & row_index ).collect_vec()
                 )
         }
 
@@ -2537,276 +2182,322 @@ mod unit_tests {
 
 
     /// Checks that Umatch decomposition is correct (using a random example matrix, D) in the following sense:
-    /// R^{-1} * R = I
-    /// C^{-1} * C = I
-    /// R^{-1} * D * C = M   
-    /// And the rows of R, R^{-1}, C, and C^{-1} appear in strictly ascending order 
+    /// T^{-1} * T = I
+    /// S^{-1} * S = I
+    /// T^{-1} * D * S = M   
+    /// And the rows of T, T^{-1}, S, and S^{-1} appear in strictly ascending order 
     #[test]
-    fn test_umatchrowmajor_comprehensive() {
+    fn test_umatchrowmajor_comprehensive_overall() {   
 
-        use crate::utilities::order::{OrderOperatorAuto, };
-        
-        use crate::algebra::matrices::operations::umatch::row_major::{Umatch};
-        use crate::algebra::matrices::operations::multiply::ProductMatrix;
-        use crate::algebra::matrices::query::{ViewRowAscend, ViewColDescend};
-        use crate::utilities::iterators::is_sorted::IsSortedBy;        
+        use crate::algebra::matrices::operations::umatch::row_major::Umatch;
+        use crate::algebra::matrices::types::product::ProductMatrix;
+        use crate::algebra::matrices::query::MatrixOracle;               
 
-        let num_indices_major           =   10;
-        let num_indices_minor           =   20;
+        let num_indices_row             =   10;
+        let num_indices_col             =   20;
         let approximate_density           =   0.2;
         let modulus                     =   17;
         let allow_nonstructural_zero     =   true;
 
-        let ring_operator           =   PrimeOrderFieldOperator::new( modulus );
-        let mapping_data       =   VecOfVec::random_mod_p_with_density( num_indices_major, num_indices_minor, approximate_density, modulus, allow_nonstructural_zero );
-        let mapping                               =   & mapping_data;
+        let ring_operator           =   PrimeOrderField::new( modulus );
+        let matrix_to_factor_data       =   VecOfVec::random_mod_p_with_density( num_indices_row, num_indices_col, approximate_density, modulus, allow_nonstructural_zero );
+        let matrix_to_factor = MatrixAlgebraPacket::with_default_order( & matrix_to_factor_data, ring_operator );
+     
 
         let umatch 
-            =   Umatch::factor( 
-                    mapping, 
-                    (0..num_indices_major).rev(), 
-                    ring_operator, 
-                    OrderOperatorAuto, 
-                    OrderOperatorAuto,
+            =   Umatch::new( 
+                    matrix_to_factor, 
+                    (0..num_indices_row).rev(), 
                 );
         // let umatch_with_refs = UmatchRowMajorWithRefs::new( &umatch );
-        let matching = umatch.matching_ref();
+        let matching = umatch.generalized_matching_matrix_ref();
+  
 
-        let comb_codomain = umatch.comb_codomain();
-        let comb_codomain_inv = umatch.comb_codomain_inv();        
-        let comb_domain = umatch.comb_domain();        
-        let comb_domain_inv = umatch.comb_domain_inv();  
-        let comb_codomain_inv_times_mapping_matched_block = umatch.comb_codomain_inv_times_mapping_matched_block();  
-        let comb_codomain_inv_times_mapping_matched_block_rows_indexed_by_keymin = umatch.comb_codomain_inv_times_mapping_matched_block_with_rows_indexed_by_matched_keymin();
+        let comb_target = umatch.target_comb();
+        let comb_target_inv = umatch.target_comb_inverse();        
+        let comb_source = umatch.source_comb();        
+        let comb_source_inv = umatch.source_comb_inverse();  
+        let target_comb_inverse_times_matrix_to_factor_matched_block = umatch.target_comb_inverse_times_matrix_to_factor_matched_block();  
+        let target_comb_inverse_times_matrix_to_factor_matched_block_rows_indexed_by_column_index = umatch.target_comb_inverse_times_matrix_to_factor_matched_block_with_rows_indexed_by_matched_column_index();
 
-        let comb_codomain_ref         =   & comb_codomain;
-        let comb_codomain_inv_ref         =   & comb_codomain_inv;
-        let comb_domain_ref         =   & comb_domain;
-        let comb_domain_inv_ref         =   & comb_domain_inv;            
-        let _comb_codomain_inv_times_mapping_matched_block_ref     =   & comb_codomain_inv_times_mapping_matched_block;
-        let comb_codomain_inv_times_mapping_matched_block_rows_indexed_by_keymin_ref = & comb_codomain_inv_times_mapping_matched_block_rows_indexed_by_keymin;
+        let comb_target_ref         =   & comb_target;
+        let comb_target_inv_ref         =   & comb_target_inv;
+        let comb_source_ref         =   & comb_source;
+        let comb_source_inv_ref         =   & comb_source_inv;            
+        let target_comb_inverse_times_matrix_to_factor_matched_block_ref     =   & target_comb_inverse_times_matrix_to_factor_matched_block;
+        let target_comb_inverse_times_matrix_to_factor_matched_block_rows_indexed_by_column_index_ref = & target_comb_inverse_times_matrix_to_factor_matched_block_rows_indexed_by_column_index;
         
 
-        let product_domain = ProductMatrix::new( comb_domain_ref, comb_domain_inv_ref, ring_operator, OrderOperatorAuto );
-        let product_codomain = ProductMatrix::new( comb_codomain_ref, comb_codomain_inv_ref, ring_operator, OrderOperatorAuto );        
-        let product_codomain_comb_inv_times_mapping = ProductMatrix::new( comb_codomain_inv_ref, mapping, ring_operator, OrderOperatorAuto );      
-        let product_codomain_comb_inv_times_mapping_times_domain_comb = ProductMatrix::new( product_codomain_comb_inv_times_mapping, comb_domain_ref, ring_operator, OrderOperatorAuto );                        
+        let product_source = ProductMatrix::new( comb_source_ref, comb_source_inv_ref );
+        let product_target = ProductMatrix::new( comb_target_ref, comb_target_inv_ref );        
+        let product_target_comb_inv_times_matrix_to_factor = ProductMatrix::new( comb_target_inv_ref, matrix_to_factor );      
+        let product_target_comb_inv_times_matrix_to_factor_times_source_comb = ProductMatrix::new( product_target_comb_inv_times_matrix_to_factor, comb_source_ref );                        
 
 
-        // println!("mapping:");
-        // print_indexed_major_views( & mapping, 0 .. num_indices_major );
+        // ----------------------------------------------------------------------------------------------------------------
+        // check that both representations of the seed matrix A (= matched part of Tinv * D) are internally valid        
+
+        let matched_row_indices     =   umatch.matched_row_indices_in_ascending_order();
+        let matched_column_indices   =   umatch.matched_column_indices_in_ascending_order();
+
+        assert!(
+            matrix_oracle_is_internally_consistent(
+                target_comb_inverse_times_matrix_to_factor_matched_block_rows_indexed_by_column_index_ref, 
+                matched_column_indices.iter().cloned(), // sorted row indices (which happen to be the same as the column indices)
+                matched_column_indices.iter().cloned(), // sorted column indices
+            )
+            &&
+            matrix_oracle_is_internally_consistent(
+                target_comb_inverse_times_matrix_to_factor_matched_block_ref, 
+                matched_row_indices.iter().cloned(), // sorted row indices
+                matched_column_indices.iter().cloned(), // sorted column indices
+            )            
+        );
+
+
+        // ----------------------------------------------------------------------------------------------------------------
+        // check that all four (inverse) COMB's are internally valid
+        // see documentation for `matrix_oracle_is_internally_consistent`, for details    
+
+        assert!(
+            matrix_oracle_is_internally_consistent(
+                comb_source_ref, 
+                0..num_indices_col, 
+                0..num_indices_col
+            )
+            &&
+            matrix_oracle_is_internally_consistent(
+                comb_source_inv_ref, 
+                0..num_indices_col, 
+                0..num_indices_col
+            )
+            &&
+            matrix_oracle_is_internally_consistent(
+                comb_target_ref, 
+                0..num_indices_row, 
+                0..num_indices_row
+            )
+            &&
+            matrix_oracle_is_internally_consistent(
+                comb_target_inv_ref, 
+                0..num_indices_row, 
+                0..num_indices_row
+            )                               
+        );
+      
+
+        // ----------------------------------------------------------------------------------------------------------------
+        // check that all four (inverse) COMB's return entries in the proper order
+        // see documentation for `matrix_order_operators_are_internally_consistent`, for details
+
+        assert!(
+            matrix_order_operators_are_internally_consistent(
+                comb_source_ref, 
+                0..num_indices_col, 
+                0..num_indices_col
+            ).is_ok()
+            &&
+            matrix_order_operators_are_internally_consistent(
+                comb_source_inv_ref, 
+                0..num_indices_col, 
+                0..num_indices_col
+            ).is_ok()
+            &&
+            matrix_order_operators_are_internally_consistent(
+                comb_target_ref, 
+                0..num_indices_row, 
+                0..num_indices_row
+            ).is_ok()
+            &&
+            matrix_order_operators_are_internally_consistent(
+                comb_target_inv_ref, 
+                0..num_indices_row, 
+                0..num_indices_row
+            ).is_ok()                                 
+        );        
+
+        // ----------------------------------------------------------------------------------------------------------------
+
+
+
+        // println!("matrix_to_factor:");
+        // print_indexed_rows( & matrix_to_factor, 0 .. num_indices_row );
         // println!("matching:");
-        // print_indexed_major_views( & matching, 0 .. num_indices_major );        
-        // println!("comb_domain:");
-        // print_indexed_major_views( & comb_domain, 0 .. num_indices_minor );        
-        // println!("comb_domain_inv:");
-        // print_indexed_major_views( & comb_domain_inv, 0 .. num_indices_minor );     
-        // println!("comb_codomain:");
-        // print_indexed_major_views( & comb_codomain, 0 .. num_indices_major );        
-        // println!("comb_codomain_inv:");
-        // print_indexed_major_views( & comb_codomain_inv, 0 .. num_indices_major );                        
-        // println!("comb_codomain_inv * mapping * comb_domain:");
-        // print_indexed_major_views( & product_codomain_comb_inv_times_mapping_times_domain_comb, 0 .. num_indices_major );                                        
-        for column_index in 0 .. num_indices_minor {
-            // println!("{:?}", product_domain.view_major_ascend( column_index ).collect_vec() );
-            itertools::assert_equal( product_domain.view_major_ascend( column_index ), std::iter::once( (column_index, 1) )   );
+        // print_indexed_rows( & matching, 0 .. num_indices_row );        
+        // println!("comb_source:");
+        // print_indexed_rows( & comb_source, 0 .. num_indices_col );        
+        // println!("comb_source_inv:");
+        // print_indexed_rows( & comb_source_inv, 0 .. num_indices_col );     
+        // println!("comb_target:");
+        // print_indexed_rows( & comb_target, 0 .. num_indices_row );        
+        // println!("comb_target_inv:");
+        // print_indexed_rows( & comb_target_inv, 0 .. num_indices_row );                        
+        // println!("comb_target_inv * matrix_to_factor * comb_source:");
+        // print_indexed_rows( & product_target_comb_inv_times_matrix_to_factor_times_source_comb, 0 .. num_indices_row );                                        
+        for column_index in 0 .. num_indices_col {
+            println!("row: {:?}", column_index );
+            println!("row {:?}: {:?}", column_index, product_source.row( & column_index ).collect_vec() );
+            itertools::assert_equal( product_source.row( & column_index ), std::iter::once( (column_index, 1) )   );
         }
 
 
-
-        // check that the product of the domain COMB with its inverse is identity: C * C^{-1} = I
-        for keymin in 0 .. num_indices_minor { 
+        // check that the product of the source COMB with its inverse is identity: S * S^{-1} = I
+        for column_index in 0 .. num_indices_col { 
             assert_eq!(
-                product_domain.view_major_ascend( keymin ).collect_vec(),
-                vec![ (keymin, 1) ]
+                product_source.row( & column_index ).collect_vec(),
+                vec![ (column_index, 1) ]
             ) 
         }
+      
 
-        // check that the product of the codomain COMB with its inverse is identity R * R^{-1} = I
-        for keymaj in 0 .. num_indices_major { 
+        // check that the product of the target COMB with its inverse is identity T * T^{-1} = I
+        for row_index in 0 .. num_indices_row { 
             assert_eq!(
-                product_codomain.view_major_ascend( keymaj ).collect_vec(),
-                vec![ (keymaj, 1) ]
+                product_target.row( & row_index ).collect_vec(),
+                vec![ (row_index, 1) ]
             ) 
-        }    
-        
-        // check the factorization R^{-1} * D * C = M
-        for keymaj in 0 .. num_indices_major { 
-            assert_eq!(
-                product_codomain_comb_inv_times_mapping_times_domain_comb.view_major_ascend( keymaj ).collect_vec(),
-                matching.view_major_ascend( keymaj ).collect_vec()
-            ) 
-        }    
-
-        // check that the major and minor views of `CombCodomainInvTimesMappingMatchedBlockRowsIndexedByKeyMin` agree (i.e. that, taken all together, they run over the same entries)     
-        verify_viewmajorascend_compatible_with_viewminordescend(
-                comb_codomain_inv_times_mapping_matched_block_rows_indexed_by_keymin_ref,
-                umatch.matching_ref().bimap_min_ref().ord_to_val_vec().iter().cloned(),
-                umatch.matching_ref().bimap_min_ref().ord_to_val_vec().iter().cloned(),                
-            );
-        
-        // check that the major and minor views of `CombCodomainInvTimesMappingMatchedBlockRowsIndexedByKeyMin` are sorted
-        for keymin in umatch.matching_ref().bimap_min_ref().ord_to_val_vec().iter().cloned() {
-            assert!(    comb_codomain_inv_times_mapping_matched_block_rows_indexed_by_keymin_ref.view_minor_descend( keymin ).is_sorted_by( |x, y| x.0 > y.0 )     );
-        }
-        for keymin in umatch.matching_ref().bimap_min_ref().ord_to_val_vec().iter().cloned() {
-            assert!(    comb_codomain_inv_times_mapping_matched_block_rows_indexed_by_keymin_ref.view_major_ascend( keymin ).is_sorted_by( |x, y| x.0 < y.0 )     );
-        }     
-
-
-
-        // ----------------------------------------------------------------------------------------------------------------
-        // check that the major and minor views of `CombCodomain` agree
-        verify_viewmajorascend_compatible_with_viewminordescend(
-                comb_codomain_ref,
-                0..num_indices_major,
-                0..num_indices_major,
-            );
-
-        // check that the minor views of `CombCodomain` are sorted
-        for keymin in 0..num_indices_major {
-            let view_minor_descend = comb_codomain_ref.view_minor_descend( keymin );
-            assert!( is_sorted_strictly(  
-                    & view_minor_descend.collect_vec(), 
-                    & umatch.order_operator_minor_reverse() 
-                ) );
-        }
-
-        // check that the major views of `CombCodomain` are sorted
-        for keymin in 0..num_indices_major {
-            let view_major_ascend = comb_codomain_ref.view_major_ascend( keymin );
-            assert!( is_sorted_strictly(  
-                    & view_major_ascend.collect_vec(), 
-                    & umatch.order_operator_major() 
-                ) );
-        }        
-
-
-        // ----------------------------------------------------------------------------------------------------------------
-        // check that the major and minor views of `CombCodomainInv` agree
-        verify_viewmajorascend_compatible_with_viewminordescend(
-                comb_codomain_inv_ref,
-                0..num_indices_major,
-                0..num_indices_major,
-            );
-
-        // check that the minor views of `CombCodomainInv` are sorted
-        for keymin in 0..num_indices_major {
-            let view_minor_descend = comb_codomain_inv_ref.view_minor_descend( keymin );
-            assert!( is_sorted_strictly(  
-                    & view_minor_descend.collect_vec(), 
-                    & umatch.order_operator_minor_reverse() 
-                ) );
-        }
-
-        // check that the major views of `CombCodomainInv` are sorted
-        for keymin in 0..num_indices_major {
-            let view_major_ascend = comb_codomain_inv_ref.view_major_ascend( keymin );
-            assert!( is_sorted_strictly(  
-                    & view_major_ascend.collect_vec(), 
-                    & umatch.order_operator_major() 
-                ) );
-        }        
-
-        // ----------------------------------------------------------------------------------------------------------------        
-        // check that the major and minor views of `CombDomain` agree
-        verify_viewmajorascend_compatible_with_viewminordescend(
-                comb_domain_ref,
-                0..num_indices_minor,
-                0..num_indices_minor,
-            );
-
-        // check that the minor views of `CombDomain` are sorted
-        for keymin in 0..num_indices_minor {
-            let view_minor_descend = comb_domain_ref.view_minor_descend( keymin );
-            assert!( is_sorted_strictly(  
-                    & view_minor_descend.collect_vec(), 
-                    & umatch.order_operator_minor_reverse() 
-                ) );
-        }  
-
-        // check that the major views of `CombDomain` are sorted
-        for keymin in 0..num_indices_minor {
-            let view_major_ascend = comb_domain_ref.view_major_ascend( keymin );
-            assert!( is_sorted_strictly(  
-                    & view_major_ascend.collect_vec(), 
-                    & umatch.order_operator_major() 
-                ) );
-        }          
-        
-        // ----------------------------------------------------------------------------------------------------------------        
-        // check that the major and minor views of `CombDomainInv` agree
-        verify_viewmajorascend_compatible_with_viewminordescend(
-                comb_domain_inv_ref,
-                0..num_indices_minor,
-                0..num_indices_minor,
-            );
-
-        // check that the minor views of `CombDomainInv` are sorted
-        for keymin in 0..num_indices_minor {
-            let view_minor_descend = comb_domain_inv_ref.view_minor_descend( keymin );
-            assert!( is_sorted_strictly(  
-                    & view_minor_descend, 
-                    & umatch.order_operator_minor_reverse() 
-                ) );
         }   
+       
         
-        // check that the major views of `CombDomainInv` are sorted
-        for keymin in 0..num_indices_minor {
-            let view_major_ascend = comb_domain_inv_ref.view_major_ascend( keymin );
-            assert!( is_sorted_strictly(  
-                    & view_major_ascend.collect_vec(), 
-                    & umatch.order_operator_major() 
-                ) );
-        }           
+        // check the factorization T^{-1} * D * S = M
+        for row_index in 0 .. num_indices_row { 
+            assert_eq!(
+                product_target_comb_inv_times_matrix_to_factor_times_source_comb.row( &row_index ).collect_vec(),
+                matching.row( & row_index ).collect_vec()
+            ) 
+        }   
+       
+
+        // check that the major and columns of `SourceCombInverseMatchedBlockRowsIndexedByColumnIndex` agree (i.e. that, taken all together, they run over the same entries)     
+        verify_rows_compatible_with_columns(
+                target_comb_inverse_times_matrix_to_factor_matched_block_rows_indexed_by_column_index_ref,
+                umatch.generalized_matching_matrix_ref().bijection_column_indices_to_ordinals_and_inverse().vec_elements_in_order().iter().cloned(),
+                umatch.generalized_matching_matrix_ref().bijection_column_indices_to_ordinals_and_inverse().vec_elements_in_order().iter().cloned(),                
+            );
+           
+        
+        // check that the major and columns of `SourceCombInverseMatchedBlockRowsIndexedByColumnIndex` are sorted
+        for column_index in umatch.generalized_matching_matrix_ref().bijection_column_indices_to_ordinals_and_inverse().vec_elements_in_order().iter().cloned() {
+            assert!(    target_comb_inverse_times_matrix_to_factor_matched_block_rows_indexed_by_column_index_ref.column_reverse( & column_index ).is_sorted_by( |x, y| x.0 > y.0 )     );
+        }
+
+
+        for column_index in umatch.generalized_matching_matrix_ref().bijection_column_indices_to_ordinals_and_inverse().vec_elements_in_order().iter().cloned() {
+            assert!(    target_comb_inverse_times_matrix_to_factor_matched_block_rows_indexed_by_column_index_ref.row( & column_index ).is_sorted_by( |x, y| x.0 < y.0 )     );
+        }     
+        
+
+        // ----------------------------------------------------------------------------------------------------------------
+        // check that all four (inverse) COMB's are internally valid
+        // see documentation for `matrix_oracle_is_internally_consistent`, for details
+
+        assert!(
+            matrix_oracle_is_internally_consistent(
+                comb_source_ref, 
+                0..num_indices_col, 
+                0..num_indices_col
+            )
+            &&
+            matrix_oracle_is_internally_consistent(
+                comb_source_inv_ref, 
+                0..num_indices_col, 
+                0..num_indices_col
+            )
+            &&
+            matrix_oracle_is_internally_consistent(
+                comb_target_ref, 
+                0..num_indices_row, 
+                0..num_indices_row
+            )
+            &&
+            matrix_oracle_is_internally_consistent(
+                comb_target_inv_ref, 
+                0..num_indices_row, 
+                0..num_indices_row
+            )                               
+        );   
+
+        // ----------------------------------------------------------------------------------------------------------------
+        // check that all four (inverse) COMB's return entries in the proper order
+        // see documentation for `matrix_order_operators_are_internally_consistent`, for details
+
+        assert!(
+            matrix_order_operators_are_internally_consistent(
+                comb_source_ref, 
+                0..num_indices_col, 
+                0..num_indices_col
+            ).is_ok()
+            &&
+            matrix_order_operators_are_internally_consistent(
+                comb_source_inv_ref, 
+                0..num_indices_col, 
+                0..num_indices_col
+            ).is_ok()
+            &&
+            matrix_order_operators_are_internally_consistent(
+                comb_target_ref, 
+                0..num_indices_row, 
+                0..num_indices_row
+            ).is_ok()
+            &&
+            matrix_order_operators_are_internally_consistent(
+                comb_target_inv_ref, 
+                0..num_indices_row, 
+                0..num_indices_row
+            ).is_ok()                                 
+        );        
+
+        // ----------------------------------------------------------------------------------------------------------------
 
 
 
+        // ----------------------------
 
 
-
-        // check that `CombCodomainInvTimesMappingMatchedBlockRowsIndexedByKeyMin` is upper triangular
-        for keymin in umatch.matching_ref().bimap_min_ref().ord_to_val_vec().iter().cloned() {
-            assert!(    comb_codomain_inv_times_mapping_matched_block_rows_indexed_by_keymin_ref.view_minor_descend( keymin ).next().unwrap().0 == keymin     );
+        // check that `SourceCombInverseMatchedBlockRowsIndexedByColumnIndex` is upper triangular
+        for column_index in umatch.generalized_matching_matrix_ref().bijection_column_indices_to_ordinals_and_inverse().vec_elements_in_order().iter().cloned() {
+            assert!(    target_comb_inverse_times_matrix_to_factor_matched_block_rows_indexed_by_column_index_ref.column_reverse( & column_index ).next().unwrap().0 == column_index     );
         }        
 
 
 // ---------------- UNCOMMENT THIS WHEN READY TO RESUME DEBUG:BEGIN        
         // check that columns are sorted in strictly descending order
-        //  NOTE: THIS IS UNNECESSARY FOR THE COMBS, SINCE WE TEST THAT THEIR MINOR VIEWS EQUAL THOSE OF VecOfVec objects, WHOSE MINOR DESCENDING VIEWS ARE *ALWAYS* STRICTLY DECREASING IN INDEX
-        for keymaj in 0 .. num_indices_minor { 
-            assert!(    mapping.view_minor_descend( keymaj             ).is_sorted_by( |x, y| x.0 > y.0 )     );
-            assert!(    comb_codomain.view_minor_descend( keymaj       ).is_sorted_by( |x, y| x.0 > y.0 )     );
-            // assert!(    comb_codomain_inv.view_minor_descend( keymaj.clone()   ).is_sorted_by( |x, y| x.0 < y.0 )     );
-            // assert!(    comb_domain.view_minor_descend( keymaj.clone()         ).is_sorted_by( |x, y| x.0 < y.0 )     );
-            // assert!(    comb_domain_inv.view_minor_descend( keymaj.clone()     ).is_sorted_by( |x, y| x.0 < y.0 )     );                                
+        //  NOTE: THIS IS UNNECESSARY FOR THE COMBS, SINCE WE TEST THAT THEIR columnS EQUAL THOSE OF VecOfVec objects, WHOSE MINOR DESCENDING VIEWS ARE *ALWAYS* STRICTLY DECREASING IN INDEX
+        for row_index in 0 .. num_indices_col { 
+            assert!(    matrix_to_factor.column_reverse( & row_index             ).is_sorted_by( |x, y| x.0 > y.0 )     );
+            assert!(    comb_target.column_reverse( & row_index       ).is_sorted_by( |x, y| x.0 > y.0 )     );
+            // assert!(    comb_target_inv.column_reverse( row_index.clone()   ).is_sorted_by( |x, y| x.0 < y.0 )     );
+            // assert!(    comb_source.column_reverse( row_index.clone()         ).is_sorted_by( |x, y| x.0 < y.0 )     );
+            // assert!(    comb_source_inv.column_reverse( row_index.clone()     ).is_sorted_by( |x, y| x.0 < y.0 )     );                                
         }          
 // ---------------- UNCOMMENT THIS WHEN READY TO RESUME DEBUG:END  
 
         
 // ---------------- UNCOMMENT THIS WHEN READY TO RESUME DEBUG: BEGIN   
-        // check that the major and minor views of the inverse of the codomain COMB agree
-        let comb_codomain_vec_of_vec_simple     
-            =   VecOfVec::from_iterable( (0..num_indices_major).map( |k| comb_codomain.view_major_ascend(k) ) );
-        for keymaj in 0..num_indices_major {
-            // println!("VIEW MAJOR DESCEND IS STARTING FOR THIS ROUND: keymaj = {:?}", keymaj);
-            // println!("VIEW MAJOR DESCEND LAZY CONSTRUCTION: {:?}", comb_codomain.view_minor_descend( keymaj ).collect_vec());
-            // println!("VIEW MAJOR DESCEND FROM MAJOR VIEW: {:?}", (& comb_codomain_vec_of_vec_simple).view_minor_descend( keymaj ).collect_vec());            
+        // check that the major and columns of the inverse of the target COMB agree
+        let comb_target_vec_of_vec_simple     
+            =   VecOfVec::from_iterable_of_iterables(
+                    (0..num_indices_row).map( |k| comb_target.row(&k) ) 
+                ).ok().unwrap();
+        for row_index in 0..num_indices_row {
+            // println!("VIEW MAJOR DESCEND IS STARTING FOR THIS ROUND: row_index = {:?}", row_index);
+            // println!("VIEW MAJOR DESCEND LAZY CONSTRUCTION: {:?}", comb_target.column_reverse( row_index ).collect_vec());
+            // println!("VIEW MAJOR DESCEND FROM ROW: {:?}", (& comb_target_vec_of_vec_simple).column_reverse( row_index ).collect_vec());            
             // println!("VIEW MAJOR DESCEND IS FINISHED FOR THIS ROUND");
             itertools::assert_equal( 
-                    comb_codomain.view_minor_descend( keymaj ),
-                    (& comb_codomain_vec_of_vec_simple).view_minor_descend( keymaj )
+                    comb_target.column_reverse( & row_index ),
+                    (& comb_target_vec_of_vec_simple).column_reverse( & row_index )
                 )
         }      
 // ---------------- UNCOMMENT THIS WHEN READY TO RESUME DEBUG:END      
         
         // check that rows are sorted in strictly ascending order
-        for keymaj in 0 .. num_indices_major { 
-            assert!(    mapping.view_major_ascend( keymaj             ).is_sorted_by( |x, y| x.0 < y.0 )     );
-            assert!(    comb_codomain.view_major_ascend( keymaj       ).is_sorted_by( |x, y| x.0 < y.0 )     );
-            assert!(    comb_codomain_inv.view_major_ascend( keymaj   ).is_sorted_by( |x, y| x.0 < y.0 )     );
-            assert!(    comb_domain.view_major_ascend( keymaj         ).is_sorted_by( |x, y| x.0 < y.0 )     );
-            assert!(    comb_domain_inv.view_major_ascend( keymaj     ).is_sorted_by( |x, y| x.0 < y.0 )     );                                
+        for row_index in 0 .. num_indices_row { 
+            assert!(    matrix_to_factor.row(   & row_index   ).is_sorted_by( |x, y| x.0 < y.0 )     );
+            assert!(    comb_target.row(        & row_index   ).is_sorted_by( |x, y| x.0 < y.0 )     );
+            assert!(    comb_target_inv.row(    & row_index   ).is_sorted_by( |x, y| x.0 < y.0 )     );
+            assert!(    comb_source.row(        & row_index   ).is_sorted_by( |x, y| x.0 < y.0 )     );
+            assert!(    comb_source_inv.row(    & row_index   ).is_sorted_by( |x, y| x.0 < y.0 )     );                                
         }  
               
 
@@ -2821,72 +2512,57 @@ mod unit_tests {
     
     //  COMB DOMAIN INV (SMALL + LARGE)
     //  ------------------------------------------------------------------------------------
-    //  TAG USED TO IDENTIFY THESE TESTS: #CombDomainInvImplementViewRowAscend    
+    //  TAG USED TO IDENTIFY THESE TESTS: #SourceCombInvImplementRow    
 
     #[test]
     fn test_retreival() {
-        use itertools::Itertools;
-
-        use crate::algebra::matrices::operations::umatch::row_major::{Umatch, CombCodomainInvTimesMappingMatchedBlock};
+        use crate::algebra::matrices::operations::umatch::row_major::{Umatch, TargetCombInverseTimesMatrixToFactorMatchedBlock};
         use crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
-        use crate::algebra::matrices::query::ViewRowAscend;
-        use crate::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;
-        
-        use crate::utilities::order::{OrderOperatorAuto};
+        use crate::algebra::matrices::query::MatrixOracle;                 
+        use crate::algebra::rings::types::field_prime_order::PrimeOrderField;
 
-        let mapping: VecOfVec< usize, usize >   =   
+        let matrix_to_factor_data: VecOfVec< usize, usize >   =   
         VecOfVec::new(  
                 vec![
                     vec![ (0, 1), (1, 1), (2, 2) ],
                     vec![ (0, 1),         (2, 1) ],
                     vec![         (1, 1), (2, 1) ],
                 ]
-            );
-        let _mapping_ref   =   & mapping; // the oracle trait is only implemented for *references* to a `VecOfVec` object
-        
-        let order_operator_major                =   OrderOperatorAuto;     
-        let order_operator_minor                =   OrderOperatorAuto;                
-        let ring_operator       =   PrimeOrderFieldOperator::new( 13 );
+            ).ok().unwrap();
+        let ring_operator       =   PrimeOrderField::new( 13 );
+        let matrix_to_factor_packet     =   MatrixAlgebraPacket::with_default_order( &matrix_to_factor_data, ring_operator );
 
-        let mapping_ref   =   & mapping;
         let umatch  
-            =   Umatch::factor( 
-                        mapping_ref, 
-                        (0..3).rev(), 
-                        ring_operator,
-                        order_operator_major,
-                        order_operator_minor,                        
+            =   Umatch::new( 
+                        matrix_to_factor_packet, 
+                        (0..3).rev(),                    
                     );
         let _umatch_ref = & umatch;
         // let umatch_with_refs = UmatchRowMajorWithRefs::new( umatch_ref);
         // let umatch_with_refs_ref = & umatch_with_refs;
         
-        //  the "seed" matrix A (equal to the pivot block of the inverse of the codomain COMB times the pivot block of the matching array)
-        let A   =   CombCodomainInvTimesMappingMatchedBlock::new( & umatch );
-        let A_ref = &A;
-        // println!("{:?}", umatch_with_refs.matching_ref());
+        //  the "seed" matrix A (equal to the pivot block of the inverse of the target COMB times the pivot block of the matching array)
+        let A   =   TargetCombInverseTimesMatrixToFactorMatchedBlock::new( & umatch );
 
-        // for keymaj in 1..3 { println!( "{:?}", A_ref.view_major_ascend(keymaj).collect_vec() ) }
-
-        //  the domain COMB
-        let comb_domain_inv = umatch.comb_domain_inv();
-        let comb_domain_inv_ground_truth
+        //  the source COMB
+        let comb_source_inv = umatch.source_comb_inverse();
+        let comb_source_inv_ground_truth
                 =   VecOfVec::new(
                             vec![
                                 vec![ (0, 1),         (2, 1) ],
                                 vec![         (1, 1), (2, 1) ],
                                 vec![                 (2, 1 )                        ],
                             ]
-                        );
-        let comb_domain_inv_ground_truth_ref = & comb_domain_inv_ground_truth;
-        for keymaj in 0 .. 3 {
-            // println!("GROUND TRUTH  : {:?}", comb_domain_inv_ground_truth_ref.view_major_ascend( keymaj ).collect_vec() );
-            // println!("UNPACKED      : {:?}", comb_domain_inv.view_major_ascend( keymaj ).into_iter().collect_vec() );   
-            // println!("SCALE FACTORS : {:?}", umatch_with_refs.matching.vec_snzval_ref() );    
-            // println!("keymaj        : {:?}", keymaj );                                
+                    ).ok().unwrap();
+        let comb_source_inv_ground_truth_ref = & comb_source_inv_ground_truth;
+        for row_index in 0 .. 3 {
+            // println!("GROUND TRUTH  : {:?}", comb_source_inv_ground_truth_ref.row( &row_index ).collect_vec() );
+            // println!("UNPACKED      : {:?}", comb_source_inv.row( &row_index ).into_iter().collect_vec() );   
+            // println!("SCALE FACTORS : {:?}", umatch_with_refs.matching.structural_nonzero_values_in_sequence() );    
+            // println!("row_index        : {:?}", row_index );                                
             itertools::assert_equal(
-                    comb_domain_inv_ground_truth_ref.view_major_ascend( keymaj ),
-                    comb_domain_inv.view_major_ascend( keymaj ),
+                    comb_source_inv_ground_truth_ref.row( & row_index ),
+                    comb_source_inv.row( &row_index ),
                 )
         }
     }
@@ -2897,149 +2573,132 @@ mod unit_tests {
 
     //  COMB DOMAIN (SMALL)
     //  ------------------------------------------------------------------------------------
-    //  TAG USED TO IDENTIFY THESE TESTS: #CombDomainImplementViewRowAscend
+    //  TAG USED TO IDENTIFY THESE TESTS: #SourceCombImplementRow
 
     #[test]
-    fn test_umatchrowmajor_comb_domain_small_example() {
+    fn test_umatchrowmajor_comb_source_small_example() {
 
         use crate::algebra::matrices::operations::umatch::row_major::{Umatch};
         use crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
-        use crate::algebra::matrices::query::ViewRowAscend;
-        use crate::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;
-        
-        use crate::utilities::order::{OrderOperatorAuto, OrderOperatorByKey};   
-        use crate::algebra::matrices::operations::multiply::ProductMatrix;     
+        use crate::algebra::matrices::query::MatrixOracle;                 
+        use crate::algebra::matrices::types::product::ProductMatrix;     
+
+        use crate::algebra::rings::types::field_prime_order::PrimeOrderField;
 
         // let num_rows = 2; let num_cols = 2; let modulus = 7;
-        // let mapping = VecOfVec::new( vec![ vec![ (0usize,5usize), (1,5)], vec![ (1,6)]] );
+        // let matrix_to_factor = VecOfVec::new( vec![ vec![ (0usize,5usize), (1,5)], vec![ (1,6)]] );
         let num_rows = 1; let num_cols = 4; let modulus = 7;
-        let mapping = VecOfVec::new( vec![ vec![ (2usize, 6usize), (3,1)], ]  );        
-        //  NOTE: mapping can be regarded as     [  0  0  6  1  ]
-        let mapping_ref = & mapping;
-        let ring_operator = PrimeOrderFieldOperator::new( modulus );
-        let order_operator_major = OrderOperatorAuto;
-        let order_operator_minor = OrderOperatorAuto;        
+
+        let ring_operator       =   PrimeOrderField::new( 13 );        
+        let matrix_to_factor_data = VecOfVec::new( vec![ vec![ (2usize, 6usize), (3,1)], ]  ).ok().unwrap();        
+        //  NOTE: matrix_to_factor can be regarded as     [  0  0  6  1  ]
+        let matrix_to_factor_packet     =   MatrixAlgebraPacket::with_default_order( &matrix_to_factor_data, ring_operator );    
 
         let umatch_root = 
-                Umatch::factor( 
-                        mapping_ref, 
+                Umatch::new( 
+                        matrix_to_factor_packet, 
                         (0 .. num_rows).rev(), 
-                        ring_operator,
-                        order_operator_major,
-                        order_operator_minor,
                     );
         // let umatch_with_refs = UmatchRowMajorWithRefs::new( &umatch_root );
         // let umatch_ref = & umatch_with_refs;
 
-        let comb_domain = umatch_root.comb_domain();
-        let comb_domain_inv = umatch_root.comb_domain_inv();     
-        let mapping_matched_cols_only = umatch_root.mapping_matched_cols_only();          
+        let comb_source = umatch_root.source_comb();
+        let comb_source_inv = umatch_root.source_comb_inverse();     
+        let matrix_to_factor_matched_columns_only = umatch_root.matrix_to_factor_matched_columns_only();          
                 
-        // check that C * C^{-1} = identity
+        // check that S * S^{-1} = identity
         let c_times_c_inv = 
             ProductMatrix::new( 
-                    &comb_domain, 
-                    &comb_domain_inv, 
-                    ring_operator, 
-                    OrderOperatorByKey::new() 
+                    &comb_source, 
+                    &comb_source_inv, 
                 );
 
-        // println!("mapping:");
-        // print_indexed_major_views( & mapping_ref, 0 .. num_rows );
-        // println!("mapping_matched_cols_only:");
-        // print_indexed_major_views( & mapping_matched_cols_only, 0 .. num_rows );        
+        // println!("matrix_to_factor:");
+        // print_indexed_rows( & matrix_to_factor_ref, 0 .. num_rows );
+        // println!("matrix_to_factor_matched_columns_only:");
+        // print_indexed_rows( & matrix_to_factor_matched_columns_only, 0 .. num_rows );        
         // println!("matching:");
-        // print_indexed_major_views( & umatch_root.matching_ref(), 0 .. num_rows );    
-        // println!("comb_codomain_inv_times_mapping_matched_block (recall that num_rows = {:?}):", num_rows);        
-        // print_indexed_major_views( && umatch_root.comb_codomain_inv_times_mapping_matched_block(), 0 .. num_rows );
-        // println!("comb_domain (recall that num_cols = {:?}) (THIS FUNCTION CALL SEEMS TO BREAK DOWN INTERNALLY WHERE comb_codomain_inv_times_mapping_matched_block IS CALLED):", num_cols);
-        // print_indexed_major_views( & comb_domain, 0 .. num_cols );        
-        // println!("comb_domain_inv:");
-        // print_indexed_major_views( & comb_domain_inv, 0 .. num_cols );                
+        // print_indexed_rows( & umatch_root.generalized_matching_matrix_ref(), 0 .. num_rows );    
+        // println!("target_comb_inverse_times_matrix_to_factor_matched_block (recall that num_rows = {:?}):", num_rows);        
+        // print_indexed_rows( && umatch_root.target_comb_inverse_times_matrix_to_factor_matched_block(), 0 .. num_rows );
+        // println!("comb_source (recall that num_cols = {:?}) (THIS FUNCTION CALL SEEMS TO BREAK DOWN INTERNALLY WHERE target_comb_inverse_times_matrix_to_factor_matched_block IS CALLED):", num_cols);
+        // print_indexed_rows( & comb_source, 0 .. num_cols );        
+        // println!("comb_source_inv:");
+        // print_indexed_rows( & comb_source_inv, 0 .. num_cols );                
         for column_index in 0 .. num_cols {
-            // println!("{:?}", c_times_c_inv.view_major_ascend( column_index ).collect_vec() );
-            itertools::assert_equal( c_times_c_inv.view_major_ascend( column_index ), std::iter::once( (column_index, 1) )   );
+            // println!("{:?}", c_times_c_inv.row( column_index ).collect_vec() );
+            itertools::assert_equal( c_times_c_inv.row( & column_index ), std::iter::once( (column_index, 1) )   );
         }
 
-        // check D * C is right-reduced
+        // check D * S is right-reduced
 
     }
 
 
     //  COMB DOMAIN (LARGER + RANDOM)
     //  ------------------------------------------------------------------------------------
-    //  TAG USED TO IDENTIFY THESE TESTS: #CombDomainImplementViewRowAscend)    
+    //  TAG USED TO IDENTIFY THESE TESTS: #SourceCombImplementRow)    
 
 
     #[test]
-    fn test_umatchrowmajor_comb_domain() {
+    fn test_umatchrowmajor_comb_source() {
 
         use crate::algebra::matrices::operations::umatch::row_major::{Umatch};
-        
-        use crate::algebra::matrices::query::ViewRowAscend;
-        use crate::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;
-        
-        use crate::utilities::order::{OrderOperatorAuto, OrderOperatorByKey};   
-        use crate::algebra::matrices::operations::multiply::ProductMatrix;     
+        use crate::algebra::matrices::types::product::ProductMatrix;         
+        use crate::algebra::matrices::query::MatrixOracle;        
+        use crate::algebra::rings::types::field_prime_order::PrimeOrderField; 
 
         let num_rows = 10; let num_cols = 10; let modulus = 7;
-        let mapping = VecOfVec::random_mod_p(num_rows, num_cols, modulus);
-        let mapping_ref = & mapping;
-        let ring_operator = PrimeOrderFieldOperator::new( modulus );
-        let order_operator_major = OrderOperatorAuto;
-        let order_operator_minor = OrderOperatorAuto;        
+        let matrix_to_factor_data = VecOfVec::random_mod_p(num_rows, num_cols, modulus);
+        let ring_operator = PrimeOrderField::new( modulus );
+        let matrix_to_factor_packet     =   MatrixAlgebraPacket::with_default_order( &matrix_to_factor_data, ring_operator );     
 
         let umatch_root = 
-                Umatch::factor( 
-                        mapping_ref, 
-                        (0 .. num_rows).rev(), 
-                        ring_operator,
-                        order_operator_major,
-                        order_operator_minor,                        
+                Umatch::new( 
+                        matrix_to_factor_packet, 
+                        (0 .. num_rows).rev(),                  
                     );
         // let umatch_with_refs = UmatchRowMajorWithRefs::new( &umatch_root );
         // let umatch_ref = & umatch_with_refs;
 
-        let comb_domain = umatch_root.comb_domain();
-        let comb_domain_inv = umatch_root.comb_domain_inv();     
+        let comb_source = umatch_root.source_comb();
+        let comb_source_inv = umatch_root.source_comb_inverse();     
                 
-        // check that C * C^{-1} = identity
+        // check that S * S^{-1} = identity
         let c_times_c_inv = 
             ProductMatrix::new( 
-                    & comb_domain, 
-                    & comb_domain_inv, 
-                    ring_operator, 
-                    OrderOperatorByKey::new() 
+                    & comb_source, 
+                    & comb_source_inv, 
                 );
 
-        // println!("mapping:");
-        // print_indexed_major_views( & mapping_ref, 0 .. num_rows );
+        // println!("matrix_to_factor:");
+        // print_indexed_rows( & matrix_to_factor_ref, 0 .. num_rows );
         // println!("matching:");
-        // print_indexed_major_views( & umatch_root.matching_ref(), 0 .. num_rows );        
-        // println!("comb_domain:");
-        // print_indexed_major_views( & comb_domain, 0 .. num_cols );        
-        // println!("comb_domain_inv:");
-        // print_indexed_major_views( & comb_domain_inv, 0 .. num_cols );                
+        // print_indexed_rows( & umatch_root.generalized_matching_matrix_ref(), 0 .. num_rows );        
+        // println!("comb_source:");
+        // print_indexed_rows( & comb_source, 0 .. num_cols );        
+        // println!("comb_source_inv:");
+        // print_indexed_rows( & comb_source_inv, 0 .. num_cols );                
         for column_index in 0 .. num_cols {
-            // println!("{:?}", c_times_c_inv.view_major_ascend( column_index ).collect_vec() );
-            itertools::assert_equal( c_times_c_inv.view_major_ascend( column_index ), std::iter::once( (column_index, 1) )   );
+            // println!("{:?}", c_times_c_inv.row( column_index ).collect_vec() );
+            itertools::assert_equal( c_times_c_inv.row( & column_index ), std::iter::once( (column_index, 1) )   );
         }
 
-        // check D * C is right-reduced
+        // check D * S is right-reduced
 
     }
 
 
     #[test]
     fn doc_test() {
-        use crate::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;
-        use crate::algebra::matrices::types::{vec_of_vec::sorted::VecOfVec};
-        use crate::algebra::matrices::operations::{umatch::row_major::Umatch, multiply::ProductMatrix};
-        use crate::algebra::matrices::debug::verify_that_product_is_identity;
-        use crate::algebra::matrices::query::{ViewRowAscend};
-        use crate::algebra::matrices::display::print_indexed_minor_views;
+        use crate::algebra::matrices::types::{vec_of_vec::sorted::VecOfVec, product::ProductMatrix};
+        use crate::algebra::matrices::operations::umatch::row_major::Umatch;
+        use crate::algebra::matrices::debug::product_is_identity_matrix;
+        use crate::algebra::matrices::display::print_indexed_columns;      
+        use crate::algebra::matrices::query::MatrixOracle;
         
-        use crate::utilities::order::{OrderOperatorAuto};
+        use crate::algebra::rings::types::field_prime_order::PrimeOrderField;        
+        
         use itertools::Itertools;
 
         // DEFINE INPUTS
@@ -3047,103 +2706,99 @@ mod unit_tests {
 
         // define the ring operator and order operator
         let modulus               =   5;
-        let ring_operator         =   PrimeOrderFieldOperator::new( modulus );        
-        let order_operator              =   OrderOperatorAuto;
+        let ring_operator         =   PrimeOrderField::new( modulus );        
 
         // define the matrix we wish to factor
-        let mapping_data          =   VecOfVec::new( 
+        let matrix_to_factor_data          =   VecOfVec::new( 
                                                 vec![   
                                                             vec![(0,1), (1,1), (2,1)],
                                                             vec![                   ], 
                                                             vec![              (2,1)], 
                                                 ] 
-                                            );
-        let mapping               =   & mapping_data;
+                                            ).ok().unwrap();
+        let matrix_to_factor_packet     =   MatrixAlgebraPacket::with_default_order( &matrix_to_factor_data, ring_operator );     
                                         
         // COMPUTE U-MATCH
         // ===============================
                                         
         let umatch
-            =   Umatch::factor(
-                    mapping,  // the matrix we wish to factor
+            =   Umatch::new(
+                    matrix_to_factor_packet,  // the matrix we wish to factor
                     (0..3).rev(), // an iterator that runs over all row indices, from bottom to top
-                    ring_operator, // the operator for the coefficient ring
-                    order_operator.clone(), // order comparator for the entries in each row
-                    order_operator, // order comparator for the entries in each column
                 );
 
         println!("matrix_major");
-        umatch.comb_codomain_inv_matched_block_indexed_by_matched_keymaj_ordinal_off_diagonal.matrix_major_data.print_dense(0);
-        println!("{:?}", umatch.comb_codomain_inv_matched_block_indexed_by_matched_keymaj_ordinal_off_diagonal.matrix_major_data.vec_of_vec() );
+        umatch.matched_block_of_target_comb_inverse_indexed_by_ordinal_of_matched_row_off_diagonal.matrix_rows_data.print_dense(0);
+        println!("{:?}", umatch.matched_block_of_target_comb_inverse_indexed_by_ordinal_of_matched_row_off_diagonal.matrix_rows_data.inner_vec_of_vec_ref() );
         
         println!("matrix_minor");
-        umatch.comb_codomain_inv_matched_block_indexed_by_matched_keymaj_ordinal_off_diagonal.matrix_minor_data.print_dense(0);        
-        println!("{:?}", umatch.comb_codomain_inv_matched_block_indexed_by_matched_keymaj_ordinal_off_diagonal.matrix_minor_data.vec_of_vec() );        
+        umatch.matched_block_of_target_comb_inverse_indexed_by_ordinal_of_matched_row_off_diagonal.matrix_columns_data.print_dense(0);        
+        println!("{:?}", umatch.matched_block_of_target_comb_inverse_indexed_by_ordinal_of_matched_row_off_diagonal.matrix_columns_data.inner_vec_of_vec_ref() );        
         
-        println!("number of pairs: {:?}", umatch.matching.num_pairs() );        
+        println!("number of pairs: {:?}", umatch.matching.number_of_structural_nonzeros() );        
         
         println!(
             "result of transpose: {:?}", 
-            umatch.comb_codomain_inv_matched_block_indexed_by_matched_keymaj_ordinal_off_diagonal.matrix_major_data.transpose_deep( umatch.matching_ref().num_pairs() ).unwrap().vec_of_vec()
+            umatch.matched_block_of_target_comb_inverse_indexed_by_ordinal_of_matched_row_off_diagonal.matrix_rows_data.transpose_deep( umatch.generalized_matching_matrix_ref().number_of_structural_nonzeros() ).unwrap().inner_vec_of_vec_ref()
         );
             
             
         // INSPECT FACTORIZATION
         // ===============================
             
-        // extract R, R^{-1}, C, C^{-1}, and M
-        let r           =   umatch.comb_codomain();        // the codomain COMB
-        let rinv        =   umatch.comb_codomain_inv();    // inverse of the the codomain COMB
-        let c           =   umatch.comb_domain();          // the domain COMB
-        let cinv        =   umatch.comb_domain_inv();      // inverse of the domain COMB
-        let m           =   umatch.matching_ref();         // the generalized matching matrix
+        // extract T, T^{-1}, S, S^{-1}, and M
+        let t           =   umatch.target_comb();        // the target COMB
+        let tinv        =   umatch.target_comb_inverse();    // inverse of the the target COMB
+        let s           =   umatch.source_comb();          // the source COMB
+        let sinv        =   umatch.source_comb_inverse();      // inverse of the source COMB
+        let m           =   umatch.generalized_matching_matrix_ref();         // the generalized matching matrix
             
             
-        println!("\nMinor views of the codomain COMB");   print_indexed_minor_views( &r, 0..3 ); 
-        println!("\nMinor views of the   domain COMB");   print_indexed_minor_views( &c, 0..3 ); 
-        println!("\nMinor views of the matching matrix"); print_indexed_minor_views( &m, 0..3 ); 
+        println!("\nColumns of the target COMB");   print_indexed_columns( &t, 0..3 ); 
+        println!("\nColumns of the   source COMB");   print_indexed_columns( &s, 0..3 ); 
+        println!("\nColumns of the generalized matching matrix"); print_indexed_columns( &m, 0..3 ); 
             
         // this will print the following:
         //
-        // Minor views of the codomain COMB
-        // minor_view 0: [(0, 1)]
-        // minor_view 1: [(1, 1)]
+        // Columns of the target COMB
+        // column 0: [(0, 1)]
+        // column 1: [(1, 1)]
         // 
-        // Minor views of the   domain COMB
-        // minor_view 0: [(0, 1)]
-        // minor_view 1: [(1, 1), (0, 3)]
-        // minor_view 2: [(2, 1), (0, 2)]
+        // Columns of the   source COMB
+        // column 0: [(0, 1)]
+        // column 1: [(1, 1), (0, 3)]
+        // column 2: [(2, 1), (0, 2)]
         // 
-        // Minor views of the matching matrix
-        // minor_view 0: [(0, 1)]
-        // minor_view 1: []
-        // minor_view 2: [(1, 1)]
+        // Columns of the generalized matching matrix
+        // column 0: [(0, 1)]
+        // column 1: []
+        // column 2: [(1, 1)]
 
         // SOLVE Ax = b FOR x
         // ===============================
         
-        let b   =   [ (2,1), (0,1) ]; // note we list entries in reverse order
-        let x   =   umatch.solve_dx_equals_b( b ).unwrap().collect_vec();
-        let dx  =   umatch.multiply_dv(x);
-        assert!( dx.eq( b ) );
+        let b   =   [ (0,1), (2,1) ]; 
+        let x   =   umatch.solve_dx_equals_b( b.clone() ).unwrap();
+        let dx  =   umatch.multiply_dx(x).collect_vec();
+        assert!( dx.eq( & b ) );
             
             
         // VERIFY THE CALCULATION
         // ===============================
             
-        // check that the product of the domain COMB with its inverse is identity: C * C^{-1} = I
-        verify_that_product_is_identity( &c, &cinv, 0..3, ring_operator, OrderOperatorAuto );
+        // check that the product of the source COMB with its inverse is identity: S * S^{-1} = I
+        product_is_identity_matrix( &s, &sinv, 0..3 );
             
-        // check that the product of the codomain COMB with its inverse is identity: R * R^{-1} = I
-        verify_that_product_is_identity( &r, &rinv, 0..3, ring_operator, OrderOperatorAuto );
+        // check that the product of the target COMB with its inverse is identity: T * T^{-1} = I
+        product_is_identity_matrix( &t, &tinv, 0..3 );
             
-        // check the factorization: R^{-1} * D * C = M
-        let rinv_d   = ProductMatrix::new( &rinv,   &mapping, ring_operator, OrderOperatorAuto );      
-        let rinv_d_c = ProductMatrix::new( &rinv_d, &c,       ring_operator, OrderOperatorAuto );                
-        for keymaj in 0 .. 3 { 
+        // check the factorization: T^{-1} * D * S = M
+        let rinv_d   = ProductMatrix::new( &tinv,   &matrix_to_factor_packet );      
+        let rinv_d_c = ProductMatrix::new( &rinv_d, &s );                
+        for row_index in 0 .. 3 { 
             assert_eq!(
-                rinv_d_c.view_major_ascend( keymaj ).collect_vec(),
-                m.view_major_ascend( keymaj ).collect_vec()
+                rinv_d_c.row( &row_index ).collect_vec(),
+                m.row( &row_index ).collect_vec()
             ) 
         }            
     }
@@ -3156,6 +2811,8 @@ mod unit_tests {
 
 #[cfg(test)]
 mod doc_test_solvers {
+    use crate::algebra::matrices::types::packet::MatrixAlgebraPacket;
+
     
 
     
@@ -3168,8 +2825,6 @@ mod doc_test_solvers {
         
         use crate::algebra::matrices::operations::umatch::row_major::Umatch;
         use crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;        
-        use crate::algebra::rings::operator_structs::field_prime_order::BooleanFieldOperator;        
-        use crate::utilities::order::OrderOperatorAuto;
         use itertools::Itertools;
 
         // DEFINE THE MATRIX
@@ -3180,26 +2835,24 @@ mod doc_test_solvers {
                                                             vec![                            ], 
                                                             vec![                    (2,true)], 
                                                 ] 
-                                            );
+                                            ).ok().unwrap();
+        let matrix_packet       =   MatrixAlgebraPacket::with_default_order_and_boolean_coefficients( & matrix );
                                         
         // COMPUTE U-MATCH
         // ===============================
                                         
         let umatch
-            =   Umatch::factor(
-                    & matrix,  // the matrix we wish to factor
+            =   Umatch::new(
+                    & matrix_packet,  // the matrix we wish to factor
                     (0..3).rev(), // an iterator that runs over all row indices, from bottom to top
-                    BooleanFieldOperator::new(), // the operator for the coefficient ring
-                    OrderOperatorAuto, // order comparator for the entries in each row
-                    OrderOperatorAuto, // order comparator for the entries in each column
                 );        
 
         // SOLVE Ax = b FOR x
         // ===============================
         
-        let b   =   [ (2,true), (0,true) ]; // note we list entries in reverse order
-        let x   =   umatch.solve_dx_equals_b( b ).unwrap().collect_vec();
-        let dx  =   umatch.multiply_dv(x);
+        let b   =   [ (0,true), (2,true) ]; 
+        let x   =   umatch.solve_dx_equals_b( b ).unwrap();
+        let dx  =   umatch.multiply_dx(x);
         assert!( dx.eq( b ) );        
     }
 
@@ -3212,9 +2865,7 @@ mod doc_test_solvers {
     fn doc_test_solve_xd_equals_b() {
 
         use crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
-        use crate::algebra::matrices::operations::umatch::row_major::Umatch;
-        use crate::algebra::rings::operator_structs::field_prime_order::BooleanFieldOperator;
-        use crate::utilities::order::OrderOperatorAuto;        
+        use crate::algebra::matrices::operations::umatch::row_major::Umatch;     
         
         // define the matrix
         // -----------------
@@ -3223,16 +2874,15 @@ mod doc_test_solvers {
                                         vec![  (0,true), (1,true),           ],
                                         vec![            (1,true), (2,true), ],
                                     ]
-            );
+            ).ok().unwrap();
+
+        let d_packet       =   MatrixAlgebraPacket::with_default_order_and_boolean_coefficients( & d );
 
         // obtain a u-match factorization
         // ------------------------------
-        let umatch  =   Umatch::factor( 
-            &d, 
-            0..2, 
-            BooleanFieldOperator::new(), 
-            OrderOperatorAuto, 
-            OrderOperatorAuto,             
+        let umatch  =   Umatch::new( 
+            &d_packet, 
+            0..2,      
         );
         
         // try solving xd = b
@@ -3241,7 +2891,7 @@ mod doc_test_solvers {
         // Case 1: a solution exists; in this case we are gauaranteed to find one
         let x = umatch.solve_xd_equals_b( vec![ (0,true), (2,true), ] );        
         assert!( x.is_some() );
-        assert!( x.unwrap().eq( vec![ (0,true), (1,true), ] ) );
+        assert!( x.unwrap().eq( & vec![ (0,true), (1,true), ] ) );
 
         // Case 2: no solution exists; in this case we get a certificate that no solution exists
         let x = umatch.solve_xd_equals_b( vec![ (0,true), (1,true), (2,true) ] );        
@@ -3253,32 +2903,31 @@ mod doc_test_solvers {
     fn doc_test_solve_xd_equals_b__withfloatcoefficients() {
         use crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
         use crate::algebra::matrices::operations::umatch::row_major::Umatch;
-        use crate::algebra::rings::operator_structs::ring_native::FieldFloat64;
-        use crate::utilities::order::OrderOperatorAuto;            
+         
         
         let d = VecOfVec::new(
                 vec![
                                         vec![  (0,3.), (1,3.),         ],
                                         vec![          (1,3.), (2,3.), ],
                                     ]
-            );
-        let umatch  =   Umatch::factor( 
-            &d, 
-            0..2, 
-            FieldFloat64::new(), 
-            OrderOperatorAuto, 
-            OrderOperatorAuto,             
+            ).ok().unwrap();
+        let d_packet       =   MatrixAlgebraPacket::with_default_order_and_f64_coefficients( & d );
+
+        let umatch  =   Umatch::new( 
+            & d_packet, 
+            0..2,             
         );
         
         // instance where there exists a solution
         let x = umatch.solve_xd_equals_b( vec![ (0,3.), (1,6.), (2,3.), ] );        
         assert!( x.is_some() );
-        assert!( x.unwrap().eq( vec![ (0,1.), (1,1.) ] ) );
+        assert!( x.unwrap().eq( &vec![ (0,1.), (1,1.) ] ) );
 
         // instance where there does not exist a solution
         let x = umatch.solve_xd_equals_b( vec![ (0,1.), (1,-1.) ] );        
         assert!( x.is_none() );
     }    
+
 
 
 }    

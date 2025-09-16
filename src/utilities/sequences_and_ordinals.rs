@@ -18,6 +18,48 @@ use super::order::{is_sorted_strictly, OrderOperatorAuto};
 
 use std::ops::Index;
 
+
+
+/// Returns `Some(i)`` if a strictly sorted sequence `a` can be obtained by deleting the `i`th element of a strictly sorted sequence `b`
+/// 
+/// This function is unsafe in the sense that it does not check that a and b are strictly sorted in ascending order.
+/// 
+/// # Examples
+/// 
+/// ```
+/// use oat_rust::utilities::sequences_and_ordinals::can_be_obtained_by_deleting_ith_element_unsafe;
+/// 
+/// assert_eq!( Some(0), can_be_obtained_by_deleting_ith_element_unsafe( &vec![5],   &vec![4,5] )     );
+/// assert_eq!( Some(1), can_be_obtained_by_deleting_ith_element_unsafe( &vec![4],   &vec![4,5] )     );
+/// assert_eq!( Some(1), can_be_obtained_by_deleting_ith_element_unsafe( &vec![4,6], &vec![4,5,6] )  );
+/// 
+/// assert_eq!( Some(0), can_be_obtained_by_deleting_ith_element_unsafe( &vec![0;0], &vec![4] )      );
+/// assert_eq!( None,    can_be_obtained_by_deleting_ith_element_unsafe( &vec![0;0], &vec![4,5] )    );
+/// 
+/// assert_eq!( None,    can_be_obtained_by_deleting_ith_element_unsafe( &vec![3],   &vec![4,5] )      );
+/// assert_eq!( None,    can_be_obtained_by_deleting_ith_element_unsafe( &vec![4,5], &vec![4,5] )      );
+/// ```
+pub fn can_be_obtained_by_deleting_ith_element_unsafe< T: Eq >( a: & Vec<T>, b: & Vec<T> ) -> Option<usize> {
+    println!("move this into an outer function");
+    if b.len() != a.len() + 1 { return None }
+    for ordinal in 0 .. a.len() {
+        if a[ ordinal ] != b[ ordinal ] {    // in this case it's possible that we can obtain a from b by deleting element `ordinal`, but we have to do some more checks            
+            for ordinal_2 in ordinal .. a.len() {
+                if a[ ordinal_2 ] != b[ ordinal_2 + 1 ] {
+                    return None
+                }
+            }                    
+            return Some(ordinal)
+        }
+    }
+    return Some( b.len() - 1 ) // in this case we can obtain a by deleting the last element of b
+}
+
+
+
+
+
+
 //  ---------------------------------------------------------------------------
 //  STRICTLY SORTED SEQUENCES
 //  ---------------------------------------------------------------------------
@@ -40,7 +82,7 @@ pub struct SortedVec< T: Ord > {
 
     /// Construct a new `SortedVec` by wrapping a vector.
     /// 
-    /// Panics if the input sequence is not sorted in strictly ascending order.
+    /// Returns `Err(sequence)` if the input sequence is not sorted in strictly ascending order.
     pub fn new( sequence: Vec< T > ) -> Result< Self, Vec< T > >  {
         if ! is_sorted_strictly( &sequence, &OrderOperatorAuto ){
 
@@ -51,9 +93,10 @@ pub struct SortedVec< T: Ord > {
 
     /// Construct a new `SortedVec` from an iterator.
     /// 
-    /// Panics if the input sequence is not sorted in strictly ascending order.
-    pub fn from_iter< I: IntoIterator< Item=T > >( sequence: I ) -> Self {
-        SortedVec { sequence: sequence.into_iter().collect() }
+    /// Returns `Err(vec)` if the input sequence is not sorted in strictly ascending order,
+    /// where `vec` is a vector containing the elements of the iterator.
+    pub fn from_iter< I: IntoIterator< Item=T > >( sequence: I ) -> Result< Self, Vec< T > > {
+        SortedVec::new( sequence.into_iter().collect() )
     }
 
     /// Return the inner sequence, consuming the wrapper.
@@ -91,6 +134,15 @@ pub struct SortedVec< T: Ord > {
         contains_subset( superset.vec(), self.vec() )
     }            
 
+    /// Returns `Some(i)`` if `self` can be obtained by deleting the `i`th element from `superset`
+    pub fn can_be_obtained_by_deleting_the_ith_element_of_the_following( &self, superset: & SortedVec< T > ) -> Option< usize > {
+        can_be_obtained_by_deleting_ith_element_unsafe( self.vec(), superset.vec() )
+    }
+
+    /// Returns `Some(i)`` if `subset` can be obtained by deleting the `i`th element from `self`
+    pub fn can_obtain_the_following_by_deleting_the_ith_element_of_self( &self, subset: & SortedVec< T > ) -> Option< usize > {
+        can_be_obtained_by_deleting_ith_element_unsafe( subset.vec(), self.vec() )
+    }    
 }
 
 
@@ -117,7 +169,7 @@ impl < T >
 
 /// Behaves like `Itertools.Combinations`, but returns combinations in *reverse order*.
 /// 
-/// See [`CombinationsReverse::new`], [`CombinationsReverse::remap_elements`], [`CombinationsReverse::from_iterable`] for different behaviors.
+/// See [`CombinationsReverse::new`], [`CombinationsReverse::remap_elements`], [`CombinationsReverse::from_iterable_of_iterables`] for different behaviors.
 #[derive(Clone,Debug)]
 pub struct CombinationsReverse< T, F > {
     combination:        Vec< usize >,
@@ -316,17 +368,20 @@ impl < T, F >
 //  BIMAPS WITH {0, .., N}
 //  ---------------------------------------------------------------------------
 
-/// Represents a surjective map {0,..,N} -> S and another map S -> {0, .., N}; if
-/// one of these maps is a bijection, then the other should be its inverse.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct BiMapSequential< T >
+/// Encodes a non-repeating sequence `a_0 .. a_N`, and provides tools to map bijectively between `a_0 .. a_N` and `0 .. N`.
+/// 
+/// We call `k` the **ordinal** of the element `a_k`, and `a_k` the **element** of the ordinal `k`.
+/// Internally, the sequence `a_0 .. a_N` is stored as a Rust `Vec`, and the map
+/// `a_k -> k` is stored as a Rust `HashMap`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)] // can't autoimplement PartialOrd or Ord because hashmaps don't implement PartialOrd or Ord
+pub struct BijectiveSequence< T >
     where T : Hash + Eq
 { 
     ord_to_val: Vec< T >, 
     val_to_ord: HashMap< T, usize > 
 }
 
-impl < T > BiMapSequential < T > 
+impl < T > BijectiveSequence < T > 
     where T: Clone + Hash + Eq
 {
     // /// Evaluate the function {0, ..., N} -> S
@@ -336,10 +391,10 @@ impl < T > BiMapSequential < T >
     // pub fn ord( &self, elt_ref: &T     ) -> usize { self.val_to_ord.get( elt_ref ).unwrap().clone() }   
 
     /// Returns an immutable reference to the private field `self.val_to_ord`
-    pub fn val_to_ord_hashmap( &self ) -> & HashMap< T, usize > { & self.val_to_ord }
+    pub fn hashmap_element_to_ordinal( &self ) -> & HashMap< T, usize > { & self.val_to_ord }
 
-    /// Returns an immutable reference to the private field `self.ord_to_val`.
-    pub fn ord_to_val_vec( &self ) -> & Vec < T > { & self.ord_to_val }
+    /// Returns an immutable reference to a `Vec` containing all the elements in the sequence, in order.
+    pub fn vec_elements_in_order( &self ) -> & Vec < T > { & self.ord_to_val }
 
     /// Returns the number of elements in the map.
     pub fn len( &self ) -> usize { self.ord_to_val.len() }
@@ -347,50 +402,65 @@ impl < T > BiMapSequential < T >
     /// Returns `true` if the sequence has length 0.
     pub fn is_empty( &self ) -> bool { self.len() == 0 }    
 
-    /// Returns `true` if the given key is present in the set of matched keys.
-    pub fn contains_key( &self, key_ref: &T ) -> bool { self.val_to_ord.contains_key( key_ref ) }
+    /// Returns `true` if the given element is present in the sequence.
+    pub fn has_ordinal_for_element( &self, key_ref: &T ) -> bool { self.val_to_ord.contains_key( key_ref ) }
 
-    /// Evaluate the function {0, ..., N} -> S
-    pub fn ord( &self, a: &T ) -> Option< usize > { 
+    /// Returns the ordinal of the element
+    /// 
+    /// Concretely, if the sequence is `a_0 .. a_N` then `self.ordinal_for_element(a_k) = k`.
+    pub fn ordinal_for_element( &self, a: &T ) -> Option< usize > { 
         self.val_to_ord.get( a ).copied() 
     }
 
-    /// Returns the `a`th element of the sequence.
-    pub fn val( &self, a: usize ) -> T { 
-        self.ord_to_val[ a ].clone()
+    /// Returns the `k`th element of the sequence.
+    /// 
+    /// Panics if `k` is out of bounds. If panics are potentially problematic, use `element_result_for_ordinal` instead.
+    pub fn element_for_ordinal( &self, k: usize ) -> T { 
+        self.ord_to_val[ k ].clone()
         // if a < self.ord_to_val.len() { Some( self.ord_to_val[ a ].clone() ) } else { None }
-    }      
+    }    
 
-    /// Reverses the order of elements; if the `BiMapSequential` stores a bijeciton `phi: X -> {0.. N}` then
+    /// Returns `Ok(kth_element_of_sequence)`, or `Err(k)` if `k` is out of bounds.
+    pub fn element_result_for_ordinal( &self, k: usize ) -> Result<T, usize> { 
+        if k < self.ord_to_val.len() { 
+            Ok( self.ord_to_val[ k ].clone() ) 
+        } else { 
+            Err( k ) 
+        }
+    }          
+
+    /// Reverses the order of elements
+    /// 
+    /// If the `BijectiveSequence` stores a bijeciton `phi: X -> {0.. N}` then
     /// the resulting bijection `psi` sends `x` to `N - 1 - phi(x)`
     /// 
     /// # Examples
     /// 
     /// ```
-    /// use oat_rust::utilities::sequences_and_ordinals::BiMapSequential;
+    /// use oat_rust::utilities::sequences_and_ordinals::BijectiveSequence;
     /// use itertools::Itertools;
     /// 
-    /// let mut a = BiMapSequential::from_vec( vec![ 1, 2, 3 ] );
+    /// let mut a = BijectiveSequence::from_vec( vec![ 1, 2, 3 ] ).unwrap();
     /// 
-    /// let internal_ord_to_val = a.ord_to_val_vec().iter().cloned();
+    /// let internal_ord_to_val = a.vec_elements_in_order().iter().cloned();
     /// itertools::assert_equal( internal_ord_to_val , vec![ 1, 2, 3] );
     /// 
-    /// let mut internal_val_ord_pairs = a.val_to_ord_hashmap().iter().map(|(&x,&y)| (x.clone(), y.clone())).collect_vec();
+    /// let mut internal_val_ord_pairs = a.hashmap_element_to_ordinal().iter().map(|(&x,&y)| (x.clone(), y.clone())).collect_vec();
     /// internal_val_ord_pairs.sort();
     /// itertools::assert_equal( internal_val_ord_pairs, vec![ (1,0), (2,1), (3,2) ] );  
     /// 
-    /// a.reverse();
+    /// a.reverse_ordinals();
     /// 
-    /// let internal_ord_to_val = a.ord_to_val_vec().iter().cloned();
+    /// let internal_ord_to_val = a.vec_elements_in_order().iter().cloned();
     /// itertools::assert_equal( internal_ord_to_val , vec![ 3, 2, 1] );
     /// 
-    /// let mut internal_val_ord_pairs = a.val_to_ord_hashmap().iter().map(|(&x,&y)| (x.clone(), y.clone())).collect_vec();
+    /// let mut internal_val_ord_pairs = a.hashmap_element_to_ordinal().iter().map(|(&x,&y)| (x.clone(), y.clone())).collect_vec();
     /// internal_val_ord_pairs.sort();
     /// itertools::assert_equal( internal_val_ord_pairs, vec![ (1,2), (2,1), (3,0) ] ); 
     /// ```
-    pub fn reverse( &mut self ) {
+    pub fn reverse_ordinals( &mut self ) {
         // reverse the order of entries in the vector `ord_to_val`
-        self.ord_to_val.reverse();
+        ( &mut self.ord_to_val ).reverse();
         // reverse the ordinals mapped to by the hashmap `val_to_ord`
         let num_pairs_minus_one = self.ord_to_val.len() - 1;
         for val in self.val_to_ord.values_mut() {
@@ -399,78 +469,81 @@ impl < T > BiMapSequential < T >
     }
 
     /// Create a new, empty sequential bimap.
-    pub fn new() -> BiMapSequential< T > {
-        BiMapSequential{ ord_to_val: Vec::new(), val_to_ord: HashMap::new() }
+    pub fn new() -> BijectiveSequence< T > {
+        BijectiveSequence{ ord_to_val: Vec::new(), val_to_ord: HashMap::new() }
     }
     
-    /// Create sequential bimap
+    /// Create [BijectiveSequence] from a vector
+    /// 
+    /// # Errors
+    /// 
+    /// Returns `Err(duplicate_element)` if the input vector contains a duplicate element.
     /// 
     /// # Examples
     /// 
     /// ```
-    /// use oat_rust::utilities::sequences_and_ordinals::BiMapSequential;        
+    /// use oat_rust::utilities::sequences_and_ordinals::BijectiveSequence;        
     /// use assert_panic::assert_panic;
     /// 
-    /// // Construct a BiMapSequential
-    /// let bimap   =   BiMapSequential::from_vec( vec![ 'a', 'b' ] );
-    /// assert_eq!( 0, bimap.ord( &'a' ).unwrap() );
-    /// assert_eq!( 'b', bimap.val( 1 ) );        
+    /// // Construct a BijectiveSequence
+    /// let bimap   =   BijectiveSequence::from_vec( vec![ 'a', 'b' ] ).unwrap();
+    /// assert_eq!( 0, bimap.ordinal_for_element( &'a' ).unwrap() );
+    /// assert_eq!( 'b', bimap.element_for_ordinal( 1 ) );        
     /// 
-    /// // Affirm that the compiler panics if we try to construct a BiMapSequential from a vector with duplicate elements
-    /// assert_panic!( 
-    ///         let _bimap = BiMapSequential::from_vec( vec![ 4, 3, 3, ] )  
+    /// // Affirm that the compiler panics if we try to construct a BijectiveSequence from a vector with duplicate elements
+    /// assert_eq!( 
+    ///         BijectiveSequence::from_vec( vec![ 4, 3, 3, ] ),
+    ///         Err( 3 ) // the duplicate element is returned
     ///     );
     /// ```
-    pub fn from_vec( vec: Vec< T > ) -> BiMapSequential< T >
+    pub fn from_vec( vec: Vec< T > ) -> Result< BijectiveSequence< T >, T >
     {
-        let hash    =   HashMap::from_iter(
-                            vec.iter().cloned().enumerate().map(|x| (x.1, x.0) )
-                        );
-        if hash.len() < vec.len() { panic!("Attempt to create `BiMapSequential` from a vector with two or more equal entries.") }
-        BiMapSequential{ ord_to_val: vec, val_to_ord: hash}
+        use std::collections::hash_map::Entry;
+        let mut hash = HashMap::with_capacity(vec.len());
+        for (i, val) in vec.iter().cloned().enumerate() {
+            match hash.entry(val.clone()) {
+                Entry::Vacant(e) => { e.insert(i); }
+                Entry::Occupied(_) => { return Err(val); }
+            }
+        }
+        Ok(BijectiveSequence{ ord_to_val: vec, val_to_ord: hash })
     }
 
-    /// Push a new element to the end of the sequence.  Panics if the element is already present in the sequence.
+    /// Creates a [BijectiveSequence] from an iterator
+    /// 
+    /// Returns `Err(duplicate_element)` if the input iterator contains a duplicate element.
+    /// 
+    pub fn from_iter< I: IntoIterator<Item=T>>(iter: I) -> Result< BijectiveSequence< T >, T > {
+        let vec     =   Vec::from_iter( iter );
+        BijectiveSequence::from_vec( vec )
+    }    
+
+    /// Push a new element `e` to the end of the sequence.  Returns `Err(e)` if `e` is already present in the sequence.
     /// 
     /// # Examples
     /// 
     /// ```
-    /// use oat_rust::utilities::sequences_and_ordinals::BiMapSequential;        
+    /// use oat_rust::utilities::sequences_and_ordinals::BijectiveSequence;        
     /// 
-    /// // Construct a BiMapSequential
-    /// let mut bimap   =   BiMapSequential::from_vec( vec![ 'a', 'b' ] );
+    /// // Construct a BijectiveSequence
+    /// let mut bimap   =   BijectiveSequence::from_vec( vec![ 'a', 'b' ] ).unwrap();
     /// bimap.push( 'c' );
-    /// assert_eq!( 2, bimap.ord( &'c' ).unwrap() );
-    /// assert_eq!( 'c', bimap.val( 2 ) );       
+    /// assert_eq!( 2, bimap.ordinal_for_element( &'c' ).unwrap() );
+    /// assert_eq!( 'c', bimap.element_for_ordinal( 2 ) );     
     /// 
-    /// // The following induces a panic, because pushing an element which already exists in the sequence results in a panic.
-    /// // let mut bimap   =   BiMapSequential::from_vec( vec![ 1, 2 ] );
-    /// // let _ = bimap.push( 2 );
+    /// // Obtain an error if we try to push an element which already exists in the sequence.
+    /// assert_eq!(
+    ///     bimap.push( 'b' ),
+    ///     Err( 'b' ) // the duplicate element is returned
+    /// );  
     /// ```
-    pub fn push( &mut self, new_element: T ) {
-        // Push the new key-value pair to the internal hashmap
-        let prior_value = self.val_to_ord.insert( 
-                    new_element.clone(), 
-                    self.len() 
-                );
-        // Panic if the element already exists in the sequence
-        if prior_value.is_some() { panic!( "Attempted to push a value to a BiMapSequential, but the value is already present in the sequence." ) }
-        // Append the element to the end of the sequence vector
-        self.ord_to_val.push( new_element );
-    }
-}
-
-impl    < T > 
-        FromIterator< T > 
-        for 
-        BiMapSequential < T > 
-    where   T:  Clone + Hash + std::cmp::Eq
-{
-    fn from_iter< I: IntoIterator<Item=T>>(iter: I) -> Self {
-
-        let vec     =   Vec::from_iter( iter );
-
-        BiMapSequential::from_vec( vec )
+    pub fn push( &mut self, new_element: T ) -> Result<(), T> {
+        if self.val_to_ord.contains_key(&new_element) {
+            return Err(new_element);
+        }
+        self.val_to_ord.insert(new_element.clone(), self.len());
+        self.ord_to_val.push(new_element);
+        Ok(())
     }
 }
 
@@ -506,7 +579,7 @@ impl    < T >
 /// duplicate entries; the resulting vector represents a bijection from 
 /// {0, .., n} to the set of unique values in the vector.  Store this new vector
 /// in an OrdinalData struct together with a hashmap representing the inverse bijection
-pub fn ordinate_unique_vals < FilRaw > ( v: & Vec< FilRaw > ) -> BiMapSequential< FilRaw > 
+pub fn ordinate_unique_vals < FilRaw > ( v: & Vec< FilRaw > ) -> BijectiveSequence< FilRaw > 
     where FilRaw: Ord + Hash + Clone
 {
     let mut a       =   v.clone();
@@ -518,7 +591,7 @@ pub fn ordinate_unique_vals < FilRaw > ( v: & Vec< FilRaw > ) -> BiMapSequential
         b.insert( t.clone(), i );
     }
 
-    BiMapSequential { ord_to_val: a, val_to_ord: b }
+    BijectiveSequence { ord_to_val: a, val_to_ord: b }
 }
 
 /// If we view a vector as a surjective function `f: { 0 .. n } ->> X`,
@@ -556,61 +629,49 @@ pub fn  reverse_hash_sequential< T: Hash + std::cmp::Eq + Clone >(
 
 #[cfg(test)]
 mod doc_test_drafts {
+    use itertools::assert_equal;
+
     
 
     #[test] 
     fn test_bimap_from_vec() {
-        use crate::utilities::sequences_and_ordinals::BiMapSequential;        
-        use assert_panic::assert_panic;
+        use crate::utilities::sequences_and_ordinals::BijectiveSequence;        
 
-        // Construct a BiMapSequential
-        let bimap   =   BiMapSequential::from_vec( vec![ 'a', 'b' ] );
-        assert_eq!( 0, bimap.ord( &'a' ).unwrap() );
-        assert_eq!( 'b', bimap.val( 1 ) );       
+        // Construct a BijectiveSequence
+        let bimap   =   BijectiveSequence::from_vec( vec![ 'a', 'b' ] ).unwrap();
+        assert_eq!( 0, bimap.ordinal_for_element( &'a' ).unwrap() );
+        assert_eq!( 'b', bimap.element_for_ordinal( 1 ) );       
 
-        // Affirm that the compiler panics if we try to construct a BiMapSequential from a vector with duplicate elements
-        assert_panic!( 
-                let _bimap = BiMapSequential::from_vec( vec![ 4, 3, 3, ] )  
-            );
+        // Affirm that the compiler errors if we try to construct a BijectiveSequence from a vector with duplicate elements
+        assert_eq!(
+            BijectiveSequence::from_vec( vec![ 4, 3, 3, ] ),
+            Err(3) // the duplicate element is returned
+        );
     }  
     
-
-    #[test] 
-    fn test_bimap_push() {
-        use crate::utilities::sequences_and_ordinals::BiMapSequential;        
-
-        // Construct a BiMapSequential
-        let mut bimap   =   BiMapSequential::from_vec( vec![ 'a', 'b' ] );
-        bimap.push( 'c' );
-        assert_eq!( 2, bimap.ord( &'c' ).unwrap() );
-        assert_eq!( 'c', bimap.val( 2 ) );       
-
-        // The following induces a panic, because pushing an element which already exists in the sequence results in a panic.
-        // let mut bimap   =   BiMapSequential::from_vec( vec![ 1, 2 ] );
-        // let _ = bimap.push( 2 );
-    }      
+  
 
 
     #[test]
     fn test_bimap_reverse() {
-        use crate::utilities::sequences_and_ordinals::BiMapSequential;
+        use crate::utilities::sequences_and_ordinals::BijectiveSequence;
         use itertools::Itertools;
 
-        let mut a = BiMapSequential::from_vec( vec![ 1, 2, 3 ] );
+        let mut a = BijectiveSequence::from_vec( vec![ 1, 2, 3 ] ).unwrap();
 
-        let internal_ord_to_val = a.ord_to_val_vec().iter().cloned();
+        let internal_ord_to_val = a.vec_elements_in_order().iter().cloned();
         itertools::assert_equal( internal_ord_to_val , vec![ 1, 2, 3] );
 
-        let mut internal_val_ord_pairs = a.val_to_ord_hashmap().iter().map(|(&x,&y)| (x, y)).collect_vec();
+        let mut internal_val_ord_pairs = a.hashmap_element_to_ordinal().iter().map(|(&x,&y)| (x, y)).collect_vec();
         internal_val_ord_pairs.sort();
         itertools::assert_equal( internal_val_ord_pairs, vec![ (1,0), (2,1), (3,2) ] );  
         
-        a.reverse();
+        a.reverse_ordinals();
 
-        let internal_ord_to_val = a.ord_to_val_vec().iter().cloned();
+        let internal_ord_to_val = a.vec_elements_in_order().iter().cloned();
         itertools::assert_equal( internal_ord_to_val , vec![ 3, 2, 1] );
 
-        let mut internal_val_ord_pairs = a.val_to_ord_hashmap().iter().map(|(&x,&y)| (x, y)).collect_vec();
+        let mut internal_val_ord_pairs = a.hashmap_element_to_ordinal().iter().map(|(&x,&y)| (x, y)).collect_vec();
         internal_val_ord_pairs.sort();
         itertools::assert_equal( internal_val_ord_pairs, vec![ (1,2), (2,1), (3,0) ] );                 
     }

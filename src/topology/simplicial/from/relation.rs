@@ -3,9 +3,6 @@
 //! Equivalently, a simplicial complex `K` represented by a 
 //! subset of simplices `Q` containing every maximal simplex of `K`.
 //! 
-//! This modules includes data structures for
-//! - the boundary matrix in row-major form
-//! - the major views of this matrix
 //! 
 //! 
 //! # Example
@@ -17,20 +14,14 @@
 //! all but one of the 2-faces have been removed.
 //! The coefficient field is the finite field of order 3.
 //! 
-//! **To run this example on your desktop computer** first checkout the
-//! [quick start tutorial in OAT]() for instructions
-//! on installing Rust and running a program.  As part of this process,
-//! you'll create a new folder that contains a file called `main.rs`.  Inside
-//! `main.rs` is some text that reads `fn main{ .. }`.  Delete everything
-//! between `{` and `}`, and paste in the following:
 //! 
 //! ```
-//! use oat_rust::algebra::chains::factored::factor_boundary_matrix;    
-//! use oat_rust::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;
+//! use oat_rust::algebra::matrices::operations::umatch::differential::DifferentialUmatch;   
+//! use oat_rust::algebra::rings::types::field_prime_order::PrimeOrderField;
 //!             
-//! use oat_rust::topology::simplicial::from::relation::BoundaryMatrixDowker;
-//! use oat_rust::topology::simplicial::simplices::vector::{subsimplices_dim_d_iter_ascend, subsimplices_dim_d_iter_descend}; 
-//! use oat_rust::topology::simplicial::simplices::vector::{subsimplices_dim_0_thru_d_iter_ascend_dim_descend_lex}; 
+//! use oat_rust::topology::simplicial::from::relation::DowkerComplex;
+//! use oat_rust::topology::simplicial::simplices::vector::{dimension_d_simplices_in_lexicographic_order_iter, dimension_d_simplices_in_reverse_lexicographic_order_iter}; 
+//! use oat_rust::topology::simplicial::simplices::vector::{dimension_0_through_d_simplices_in_ascending_dimension_descending_lexicographic_order_iter}; 
 //!     
 //! use oat_rust::utilities::order::OrderOperatorAuto;        
 //! use oat_rust::utilities::sequences_and_ordinals::SortedVec;
@@ -41,12 +32,13 @@
 //! // ----------
 //!     
 //! // Define the maximum homology dimensino we want to compute.
+//! let min_homology_dimension                  =   0;
 //! let max_homology_dimension                  =   2;
 //!     
 //! // Define the ring operator for the finite field of order 3.
 //! // You can use this object to perform arithmetic operations, e.g., 
 //! // to add 1 and 1, you can run `ring_operator.add(1,1)`.
-//! let ring_operator          =   PrimeOrderFieldOperator::new(3);
+//! let ring_operator          =   PrimeOrderField::new(3);
 //!     
 //! // We will build a dowker complex.
 //! // A dowker complex is defined by a vertex set V and a family S
@@ -56,7 +48,7 @@
 //!     
 //! // Each dowker simplex is represented by a SortedVec of vertices.
 //! // We store the list of all such simplices inside a larger vector.
-//! let dowker_simplices 
+//! let dowker_simplices: Vec<SortedVec<usize>>
 //!     =   vec![    
 //!                 vec![0,1,2], 
 //!                 vec![0,3], 
@@ -71,95 +63,93 @@
 //! //  ---------------
 //!     
 //! // This is a lazy object that generates rows/columns of the boundary matrix, on demand.
-//! let boundary_matrix = BoundaryMatrixDowker::new( dowker_simplices.clone(), ring_operator.clone() );
+//! let boundary_matrix = DowkerComplex::new( dowker_simplices.clone(), ring_operator.clone() );
 //!     
 //! //  Simplex iterators
 //! //  -----------------
 //!     
 //! // An iterator that runs over all triangles in the complex, in ascending 
 //! // lexicographic order
-//! let triangles_ascending_order = subsimplices_dim_d_iter_ascend( &dowker_simplices, 2);
+//! let triangles_ascending_order = dimension_d_simplices_in_lexicographic_order_iter( &dowker_simplices, 2);
 //!     
 //! // An iterator that runs over all edges in the complex, in descending 
 //! // lexicographic order
-//! let triangles_descending_order = subsimplices_dim_d_iter_descend( &dowker_simplices, 2);   
+//! let triangles_descending_order = dimension_d_simplices_in_reverse_lexicographic_order_iter( &dowker_simplices, 2);   
 //!     
 //! // An iterator that runs over simplices of dimension 0 through max_homology_dimension,
 //! // ordered first by dimension (ascending) and second by lexicographic order (descending)
-//! let row_indices = boundary_matrix.row_indices_in_descending_order( max_homology_dimension );
+//! let row_indices = boundary_matrix.simplices_in_row_reduction_order( max_homology_dimension );
 //! 
 //! // row_indices contains a reference to boundary_matrix, which will cause problems. Instead,
 //! // we can construct an iterator that runs over the same sequence of simplices, like so:
-//! let row_indices     =   subsimplices_dim_0_thru_d_iter_ascend_dim_descend_lex(&dowker_simplices, max_homology_dimension);
+//! let row_indices     =   dimension_0_through_d_simplices_in_ascending_dimension_descending_lexicographic_order_iter(&dowker_simplices, max_homology_dimension);
 //!     
-//! //  Homology computation (by matrix factorization)
-//! //  ----------------------------------------------
+//! //  Matrix factorization (used to compute homology)
+//! //  -----------------------------------------------
 //!     
 //! // Factor the boundary matrix
-//! let factored    =   factor_boundary_matrix( 
+//! let factored    =   DifferentialUmatch::new( 
 //!                         boundary_matrix, 
-//!                         ring_operator, 
-//!                         OrderOperatorAuto, 
-//!                         row_indices,
+//!                         min_homology_dimension,
+//!                         max_homology_dimension,
 //!                     );
-//!                 
-//! //  Printing Betti numbers
-//! //  ----------------------
-//! //
-//! // The following code should print the following:
+//!                   
+//! // Betti numbers  
+//! // -------------
 //! // 
-//! // The betti number in dimension 0 is 1.
-//! // The betti number in dimension 1 is 2.
-//!                 
-//! // Betti numbers.  For this computation we have to provide a
-//! // function that assigns a dimension to each index (i.e. to each simplex)
-//! let betti_numbers   =   factored.betti_numbers(|x| x.len() as isize -1 ); 
+//! // To extract betti numbers, the user has to provide a function that assigns a
+//! // dimension to each index (i.e. to each simplex). This is just the length of 
+//! // the simplex minus 1.
+//! // The resulting object, `betti_numbers`, is a hashmap that maps dimensions to betti numbers.
+//! let betti_numbers   =   factored.betti_numbers(); 
+//! 
+//! // This loop prints the betti numbers in dimensions 0 and 1
 //! for dim in 0 .. 2 {
 //!     println!(
 //!             // we'll insert two values into this string
 //!             "The betti number in dimension {:?} is {:?}.",
-//!             dim,                  // the dimension
-//!             betti_numbers         // and the betti number
-//!                 .get( & dim )     // this looks up a value in the hashmap
-//!                 .unwrap_or( & 0)  // if the hashmap doesn't have the value, then use 0
+//!             dim,                        
+//!             betti_numbers.get( & dim )  
 //!         );            
 //! }
 //! println!(""); // insert line break
 //! 
+//! // This should print the following:
+//! // The betti number in dimension 0 is 1.
+//! // The betti number in dimension 1 is 2.
 //! 
-//! //  Print cycle representatives for homology
-//! //  ----------------------------------------
-//! //
-//! // The following code should print the following:
-//! // 
-//! // The following are basis vectors for homology in dimensions 0 through 2
-//! // Basis vector 0 = [([0], 1)]
-//! // Basis vector 1 = [([2, 3], 1), ([0, 3], 2), ([0, 2], 1)]
-//! // Basis vector 2 = [([1, 3], 1), ([0, 3], 2), ([0, 1], 1)]
+//! // Cycle representatives for homology
+//! // ----------------------------------
 //! 
 //! println!(
 //!         "The following are basis vectors for homology in dimensions 0 through {:?}",
 //!         max_homology_dimension,
 //!     );
-//! for (cycle_number, cycle) in factored.basis_harmonic().enumerate() {
+//! for (cycle_number, cycle) in factored.homology_basis().enumerate() {
 //!     // `cycle` is an iterator.  For convenience, collect the elements of the
 //!     // iterator into a Rust vector.
 //!     let cycle: Vec<_> = cycle.collect();
 //!     println!("Basis vector {:?} = {:?}", cycle_number, cycle);
 //! }
-//! ```
 //! 
+//! // This should print the following:
+//! //
+//! // The following are basis vectors for homology in dimensions 0 through 2
+//! // Basis vector 0 = [([0], 1)]
+//! // Basis vector 1 = [([0, 2], 1), ([0, 3], 2), ([2, 3], 1)]
+//! // Basis vector 2 = [([0, 1], 1), ([0, 3], 2), ([1, 3], 1)]
+//! ```
 //! 
 //! ### Try changing the coefficient ring
 //! 
-//! OAT has a number of different [predefined coefficient rings](oat_rust::rings), which you can substitute into
-//! the example above in order to calculate homology with different coefficients.  Simply replace the
-//! line 
+//! OAT has a number of different [predefined coefficient rings](crate::algebra::rings::types), which you can substitute into
+//! the example above in order to calculate homology with different coefficients.  Simply replace `PrimeOrderField::new(3)` 
+//! in the following line
 //! ```
-//! # use oat_rust::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;       
-//! let ring_operator   =   PrimeOrderFieldOperator::new(3);
+//! # use oat_rust::algebra::rings::types::field_prime_order::PrimeOrderField;       
+//! let ring_operator   =   PrimeOrderField::new(3);
 //! ``` 
-//! with one of the `let ring_operator = ...` lines listed under *Predefined Rings*, [here](oat_rust::rings).
+//! with the [ring operator](crate::algebra::rings) of your choice.
 //! 
 //! ### Try changing the complex
 //! 
@@ -180,32 +170,31 @@
 //! );
 //! ```
 //! 
-//! # About this module
+//! # Implementation notes
 //! 
-//! This module uses a data structure [`oat_rust::utilities::sequences_and_ordinals::SortedVec`]
+//! This module uses the [SortedVec] data structure
 //! for a variety of internal opertaions, e.g. binary search, set union, set difference, evaluation of
 //! set containment, etc.
 
-use crate::algebra::matrices::query::{IndicesAndCoefficients, ViewRowAscend, ViewRowDescend, ViewColAscend, ViewColDescend};
-use crate::algebra::matrices::operations::umatch::row_major::ParetoShortCircuit;
-use crate::algebra::rings::operator_traits::{Semiring, Ring,};
-use crate::utilities::iterators::merge::hit::HitMerge;
+use crate::algebra::chain_complexes::ChainComplex;
+use crate::algebra::matrices::query::{MatrixAlgebra, MatrixOracle, };
+use crate::algebra::matrices::operations::MatrixOracleOperations;
+use crate::algebra::rings::traits::RingOperations;
+use crate::utilities::iterators::general::{symmetric_difference_of_ordered_iterators, IntersectOrderedIterators, TwoTypeIterator};
+use crate::utilities::iterators::merge::hit::IteratorsMergedInSortedOrder;
 use crate::utilities::sequences_and_ordinals::{SortedVec, CombinationsReverse};
 
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::iter::{ Flatten};
-use std::marker::PhantomData;
+use std::iter::{ Cloned, Flatten};
+use std::slice::Iter;
 
-use itertools::{Itertools, Dedup};
+use itertools::{Combinations, Dedup, Itertools, KMerge};
 
 
 use crate::topology::simplicial::boundary::{SimplexBoundaryAscend, SimplexBoundaryDescend};
-use crate::topology::simplicial::simplices::vector::{subsimplices_dim_d_iter_descend, subsimplices_dim_0_thru_d_iter_ascend_dim_descend_lex};
-use crate::utilities::order::{ OrderOperatorAutoReverse, OrderOperatorAuto};        
-use crate::algebra::rings::operator_structs::field_prime_order::{PrimeOrderFieldOperator};
-
-// use oat_rust::boundary_matrices::{SimplexBoundaryAscend, SimplexBoundaryDescend};
+use crate::topology::simplicial::simplices::vector::{dimension_0_through_d_simplices_in_ascending_dimension_descending_lexicographic_order_iter, dimension_0_through_d_simplices_in_dimensionwise_lexicographic_order_iter, dimension_d_simplices_in_lexicographic_order_iter, dimension_d_simplices_in_reverse_lexicographic_order_iter};
+use crate::utilities::order::{ LexicographicOrderDominatedByReverselength, OrderOperatorAuto, OrderOperatorAutoReverse, OrderOperatorByKey, OrderOperatorByKeyCustom};        
 
 
 
@@ -219,222 +208,421 @@ use crate::algebra::rings::operator_structs::field_prime_order::{PrimeOrderField
 //  ===================================================================================
 
 
-/// Represents the Dowker complex of a family of subsets.
+/// Represents the Dowker complex of a binary relation
 /// 
-/// We require the elements of the sets to implement `Ord`, as this facilitates numerous
-/// counting and look-up operations.
+/// Here with think of a binary relation between sets `S` and `T` as a binary matrix
+/// with rows labeled by the elements of `S` and columns labeled by the elements of `T`.
+/// 
+/// In order to assist with indexing, we constrain the elements of `T` as follows. 
+/// Note that **we call the elements of `T` vertices**.
+/// - They should implement [Ord].
+/// - It should be possible to convert them to `usize`; this requirement is formalized
+///   by requiring `usize` to implement `From<Vertex>`.
+/// - The order on vertices should be the same as the order obtained by converting
+///   vertices to usize.
+/// 
+/// We represent the relation as a  `Vec< SortedVec< usize > >`. If `r` has this type
+/// then we regard `r` as the relation that contains `(s,t)` iff `r[s]` contains `t`.
 #[derive(Clone)]
-pub struct BoundaryMatrixDowker
-            < Vertex, RingOperator, RingElement >
+pub struct DowkerComplex
+            < Vertex, RingOperator >
     where
         Vertex:             Clone + Ord + Hash,
-        RingOperator:       Semiring< RingElement > + Ring< RingElement >,
-        RingElement:        Clone,
+        RingOperator:       Clone + RingOperations,
+        usize:              From< Vertex >,                
 {
-    dowker_sets:            Vec< SortedVec< Vertex > >,
+    relation_rows:          Vec< SortedVec< Vertex > >,
+    relation_columns:       Vec< SortedVec< usize > >,    
     ring_operator:          RingOperator,
-    phantom_ringelement:    PhantomData< RingElement >,
 }
 
 
-impl < Vertex, RingOperator, RingElement >
+impl < Vertex, RingOperator >
     
-    BoundaryMatrixDowker
-        < Vertex, RingOperator, RingElement >
+    DowkerComplex
+        < Vertex, RingOperator >
     where
         Vertex:             Clone + Debug + Ord + Hash,
-        RingOperator:       Semiring< RingElement > + Ring< RingElement >,
-        RingElement:        Clone,
+        RingOperator:       Clone + RingOperations,
+        usize:              From< Vertex >,                
 {
     /// Construct a new Dowker complex
-    pub fn new( dowker_sets: Vec< SortedVec< Vertex > >, ring_operator: RingOperator ) -> Self {
-        BoundaryMatrixDowker{ dowker_sets, ring_operator, phantom_ringelement: PhantomData }
+    pub fn new( relation_rows: Vec< SortedVec< Vertex > >, ring_operator: RingOperator ) -> Self {
+
+        let max_column_index: Option<usize>        =   relation_rows
+                                            .iter()
+                                            .map(|simplex| simplex.vec().iter().cloned().map(|x| x.into())  )
+                                            .flatten()
+                                            .max();
+
+        // if no dowker simplex is nonempty then we don't need to do any more work
+        if max_column_index.is_none() {
+            return DowkerComplex{ relation_rows, relation_columns: Vec::with_capacity(0), ring_operator, }
+        }
+
+        // otherwise let's construct the dual dowker sets
+        // first we will count how much space to allocate to each row
+        let mut row_counts          =   vec![ 0usize; max_column_index.unwrap() + 1 ];
+        for dowker_set in relation_rows.iter() {
+            for vertex in dowker_set.vec() {
+                let vertex_usize: usize     =   vertex.clone().into();
+                row_counts[ vertex_usize ] += 1; // the `into` method convertex the vertex to usize
+            }
+        }
+        // now allocate the dual
+        let mut transpose: Vec<Vec<usize>>    =   Vec::with_capacity( max_column_index.unwrap() );
+        for row_count in row_counts { transpose.push( Vec::with_capacity(row_count) ) }
+
+        // now construct the dual
+        for ( row_index, dowker_set ) in relation_rows.iter().enumerate() {
+            for vertex in dowker_set.vec() {
+                let vertex_usize: usize     =   vertex.clone().into();
+                let row_of_transpose: &mut Vec<usize> = transpose.get_mut( vertex_usize ).unwrap();
+                row_of_transpose.push( row_index ); // the `into` method convertex the vertex to usize
+            }
+        }      
+        let mut transpose_safe =   Vec::with_capacity( transpose.len() );
+        for sorted_set in transpose.into_iter() {
+            transpose_safe.push( SortedVec::new(sorted_set).ok().unwrap() );
+        }
+
+        DowkerComplex{ relation_rows, relation_columns: transpose_safe, ring_operator, }
     }
 
     /// Construct a new Dowker complex from vectors; panics if one of the vectors is not sorted in strictly ascending order.
     pub fn from_vectors( dowker_simplices: Vec< Vec< Vertex > >, ring_operator: RingOperator ) -> Result< Self, Vec< Vertex > > {
-        let mut dowker_sets = Vec::with_capacity( dowker_simplices.len() );
+        let mut relation_rows = Vec::with_capacity( dowker_simplices.len() );
         for ( counter, simplex ) in dowker_simplices.into_iter().enumerate() {
             match SortedVec::new(simplex) {
                 Err( vec ) => { 
                     println!("Error: attempted to create a Dowker boundary matrix from a sequence of simplices, but simplex number {:?}, which is {:?}, is not sorted.", counter, &vec); 
                     return Err( vec );
                 } Ok(set) => { 
-                    dowker_sets.push( set ); 
+                    relation_rows.push( set ); 
                 }
             }            
         }
-        // let dowker_sets = dowker_simplices.into_iter().map(|sequence| SortedVec::new(sequence)? ).collect();
-        Ok( BoundaryMatrixDowker{ dowker_sets, ring_operator, phantom_ringelement: PhantomData } )
+        // let relation_rows = dowker_simplices.into_iter().map(|sequence| SortedVec::new(sequence)? ).collect();
+        Ok( DowkerComplex::new( relation_rows, ring_operator ) )
     }    
     
-    /// A superset of the family of maximal simplices (represented by hash sets)
-    pub fn dowker_sets( &self ) -> & Vec< SortedVec< Vertex > > { & self.dowker_sets }
-    
-    /// A superset of the family of maximal simplices (represented by vectors whose vertices
-    /// are sorted in strictly ascending order)
-    pub fn dowker_simplices( &self ) -> & Vec< SortedVec < Vertex > > { 
-        & self.dowker_sets
-        // self.dowker_sets
-        //     .iter()
-        //     .map(
-        //             |x|
-        //             {
-        //                 let mut a: Vec<_> = x.iter().cloned().collect();
-        //                 a.sort();
-        //                 a
-        //             }
-        //         )
-        //     .collect()
-    }   
+    /// The rows of the relation
+    /// 
+    /// Each row is formatted as a [SortedVec] of elements (or vertices).
+    pub fn relation_rows( &self ) -> & Vec< SortedVec< Vertex > > { & self.relation_rows }  
 
-    /// Returns the sequence of row indices of the boundary matrix sorted (first) 
+    /// The columns of the relation
+    /// 
+    /// Each column is formatted as a [SortedVec] of `usize` integers
+    pub fn relation_columns( &self ) -> & Vec< SortedVec< usize > > { & self.relation_columns }      
+
+
+    /// Returns the maximum index of any vertex (convertex to `usize`)
+    fn max_vertex( &self ) -> Option< Vertex > {
+        self.relation_rows
+            .iter()
+            .map(|simplex| simplex.vec().iter().cloned()  )
+            .flatten()
+            .max()
+    }    
+
+    /// Returns the sequence of simplices
+    /// contained in the Dowker complex that have dimension ≤ `max_simplex_dimension`, ordered (first) 
     /// in ascending order of dimension, and (second) in descending lexicographic
-    /// order (excluding simplices of dimension `> max_simplex_dimension`)
-    pub fn row_indices_in_descending_order( 
+    /// order (excluding simplices of dimension `> max_simplex_dimension`).
+    /// 
+    /// This is the same order in which we visit rows of the bounday matrix during the cohomology reduction
+    /// algorithm.
+    /// 
+    /// 
+    /// **There are many other tools to enumerate the simplices in the Dowker complex, in addition.** See the
+    /// methods in [crate::topology::simplicial::simplices::vector] for examples.
+    pub fn simplices_in_row_reduction_order( 
                     &self, 
                     max_simplex_dimension: isize 
                 ) -> 
-            // Vec< Vec< Vertex > > 
-            Flatten< std::vec::IntoIter<
-                    Dedup< 
-                            HitMerge< 
-                                    CombinationsReverse< Vertex, & Vec< Vertex > >,
-                                    OrderOperatorAutoReverse,
-                                >,  
-                        >     
-                >>                
+        Flatten< std::vec::IntoIter<
+            TwoTypeIterator<
+                std::iter::Empty< Vec<Vertex> >,
+                Dedup< 
+                    IteratorsMergedInSortedOrder< 
+                        CombinationsReverse< Vertex, &Vec< Vertex > >,
+                        OrderOperatorAutoReverse,
+                    >,  
+                >        
+            >,   
+        >>                            
     {
-        return subsimplices_dim_0_thru_d_iter_ascend_dim_descend_lex( self.dowker_simplices(), max_simplex_dimension )
-        // let iter_keymaj = 
-        //     (0..max_simplex_dimension+1)
-        //         .map(|x| subsimplices_dim_d_iter_descend(&dowker_simplices, x).unwrap() )
-        //         .flatten();
+        return dimension_0_through_d_simplices_in_ascending_dimension_descending_lexicographic_order_iter( 
+                    self.relation_rows(), 
+                    max_simplex_dimension 
+                )
+
     } 
 
-
+    /// Returns the simplices of the Dowker comples (up to dimension `max_simplex_dimension`) in lexicographic order
+    /// 
+    /// **There are many other tools to enumerate the simplices in the Dowker complex, in addition.** See the
+    /// methods in [crate::topology::simplicial::simplices::vector] for examples. Most of these methods take a
+    /// `& Vec< SortedVec< Vertex > >` as input; you can obtain this from a [DowkerComplex] using the [DowkerComplex::relation_rows]
+    /// method.
+    pub fn simplices_in_lexicographic_order( &self, max_simplex_dimension: isize )
+        ->
+        Flatten<
+            std::vec::IntoIter<
+                TwoTypeIterator<
+                    std::iter::Empty< Vec<Vertex> >,
+                    Dedup< KMerge<  Combinations<Cloned<Iter<Vertex>>> > >,
+                >
+            >
+        >        
+    {
+        dimension_0_through_d_simplices_in_dimensionwise_lexicographic_order_iter( & self.relation_rows, max_simplex_dimension )
+    }
 
 
 }
 
 
-//  INDICES AND COEFFICIENTS
-//  ------------------------------------------
 
 
-impl < Vertex, RingOperator, RingElement >
-    
-    IndicesAndCoefficients for
-
-    BoundaryMatrixDowker
-        < Vertex, RingOperator, RingElement >
-
-    where
-        Vertex:             Clone + Ord + Hash,
-        RingOperator:       Semiring< RingElement > + Ring< RingElement >,
-        RingElement:        Clone,
-{
-    type EntryMinor       =   ( Self::RowIndex, Self::Coefficient );    
-    type EntryMajor =   ( Self::RowIndex, Self::Coefficient );
-    type RowIndex = Vec< Vertex >; 
-    type ColIndex = Vec< Vertex >; 
-    type Coefficient = RingElement;
-}
 
 
-//  ORACLE MAJOR ASCEND
-//  ------------------------------------------
+impl < Vertex, RingOperator >
 
-impl < Vertex, RingOperator, RingElement >
-    
-    ViewRowAscend for
+    MatrixOracle for 
 
-    BoundaryMatrixDowker
-        < Vertex, RingOperator, RingElement >
+    DowkerComplex
+        < Vertex, RingOperator >
 
     where
-        Vertex:             Clone + Debug + Ord + Hash,
-        RingOperator:       Clone + Semiring< RingElement > + Ring< RingElement >,
-        RingElement:        Clone,
+        Vertex:                     Clone + Debug + Ord + Hash,
+        RingOperator:               Clone + RingOperations,
+        usize:                      From< Vertex >,
 {
-    type ViewMajorAscend            =   CoboundaryDowkerAscend< Vertex, RingOperator, RingElement >;
-    type ViewMajorAscendIntoIter    =   Self::ViewMajorAscend;
+    type Coefficient            =   RingOperator::Element;
 
-    fn view_major_ascend( &self, keymaj: Self::RowIndex ) -> Self::ViewMajorAscend {
-        CoboundaryDowkerAscend::from_vec_of_dowker_sets( keymaj, & self.dowker_sets, self.ring_operator.clone() ).unwrap()
+    type RowIndex               =   Vec< Vertex >;
+
+    type ColumnIndex            =   Vec< Vertex >;
+
+    type RowEntry               =   ( Vec< Vertex >, Self::Coefficient );
+
+    type ColumnEntry            =   ( Vec< Vertex >, Self::Coefficient );
+
+    type Row                    =   DowkerBoundaryMatrixRow< Vertex, RingOperator >;
+
+    type RowReverse             =   DowkerBoundaryMatrixRowReverse< Vertex, RingOperator >;
+
+    type Column                 =   SimplexBoundaryAscend< Vertex, RingOperator >;
+
+    type ColumnReverse          =   SimplexBoundaryDescend< Vertex, RingOperator >;
+
+    fn row(                     &   self, index: & Self::RowIndex   )   -> Self::Row {
+        DowkerBoundaryMatrixRow::from_vec_of_dowker_sets( index.clone(), & self.relation_rows, self.ring_operator.clone() ).unwrap()
+    }
+
+    fn row_reverse(             &   self, index: & Self::RowIndex   )   -> Self::RowReverse {
+        DowkerBoundaryMatrixRowReverse::from_vec_of_dowker_sets( index.clone(), & self.relation_rows, self.ring_operator.clone() ).unwrap()
+    }
+
+    fn column(                  &   self, index: & Self::ColumnIndex)   -> Self::Column {
+        SimplexBoundaryAscend::new( index.clone(), self.ring_operator.clone() )
+    }
+
+    fn column_reverse(          &   self, index: & Self::ColumnIndex)   -> Self::ColumnReverse {
+        SimplexBoundaryDescend::new( index.clone(), self.ring_operator.clone() )
+    }
+
+    fn has_row_for_index(     &   self, index: & Self::RowIndex   )   -> bool {
+
+        // the vector must be strictly sorted
+        if ! index.iter().is_sorted_by( |a,b| a.lt(b) ) {
+            return false
+        }
+
+        // we have an `index` which is a collection of integers indexing the columns of the binary relation
+        // matrix. the question is whether there exists a row index where all of these rows are
+        // nonzero. we can answer this question by intersecting the column indices of all the rows
+        IntersectOrderedIterators::new(
+            index.iter().map(|v| self.relation_columns[ usize::from(v.clone()) ].vec().iter().cloned() )               
+        )
+        .next()
+        .is_some()
+    }
+
+    fn has_column_for_index(  &   self, index: & Self::ColumnIndex)   -> bool {
+        // the test for containing a row is the same as the test for containing a column
+        self.has_row_for_index(index)
+    }
+
+    fn structural_nonzero_entry(&   self, row:   & Self::RowIndex, column: & Self::ColumnIndex ) ->  Option< Self::Coefficient > {
+
+        // both indices must be
+        if !  self.has_row_for_index(row)  {
+            panic!("Attempted to look up the entry in row {:?}, column {:?} of a Dowker boundary matrix, but {:?} is either an invalid simplex (not sorted or has a repeat entry) or it is not contained in the Dowker compelx", row, column, row );
+        }
+        if !  self.has_column_for_index(row)  {
+            panic!("Attempted to look up the entry in row {:?}, column {:?} of a Dowker boundary matrix, but {:?} is either an invalid simplex (not sorted or has a repeat entry) or it is not contained in the Dowker compelx", row, column, column );
+        }        
+
+        // this criterion has to be satisfied to have a facet-cofacet pair
+        if column.len() != row.len() + 1 { 
+            return None 
+        }
+
+        // get the symmetric difference
+        let mut symmetric_difference                        =   symmetric_difference_of_ordered_iterators( row.iter(), column.iter() );
+        let first_different_vertex                      =   symmetric_difference.next();  
+        
+        if symmetric_difference.next().is_some() {
+            // in this case the row and column indices differ by more than one vertex, so they cannot be a facet-cofacet pair
+            return None
+        } else {
+            // in this case we do have a facet-cofacet pair, so we have to calculate the corresponding coefficient by finding 
+            // which vertex in column is not contained in row, and then calculating the corresponding coefficient
+            for (counter, vertex) in column.iter().enumerate() {
+                if Some(vertex) == first_different_vertex {
+                    let coefficient         =   self.ring_operator.minus_one_to_power( counter );
+                    return Some( coefficient )
+                }
+            }
+        }
+
+        panic!("Error retreiving structural nonzero entry.");
     }
 }
 
-//  ORACLE MAJOR DESCEND
-//  ------------------------------------------
 
-impl < Vertex, RingOperator, RingElement >
-    
-ViewRowDescend for
 
-    BoundaryMatrixDowker
-        < Vertex, RingOperator, RingElement >
+
+
+
+
+
+
+impl < Vertex, RingOperator >
+
+    MatrixAlgebra for 
+
+    DowkerComplex
+        < Vertex, RingOperator >
 
     where
-        Vertex:             Clone + Debug + Ord + Hash,
-        RingOperator:       Clone + Semiring< RingElement > + Ring< RingElement >,
-        RingElement:        Clone,
+        Vertex:                     Clone + Debug + Ord + Hash,
+        RingOperator:               Clone + RingOperations,
+        usize:                      From< Vertex >,
 {
-    type ViewMajorDescend           =   CoboundaryDowkerDescend< Vertex, RingOperator, RingElement >;
-    type ViewMajorDescendIntoIter   =   Self::ViewMajorDescend;
+    type RingOperator                                   =   RingOperator;
 
-    fn view_major_descend( &self, keymaj: Self::RowIndex ) -> Self::ViewMajorDescend {
-        CoboundaryDowkerDescend::from_vec_of_dowker_sets( keymaj, & self.dowker_sets, self.ring_operator.clone() ).unwrap()
+    type OrderOperatorForRowEntries                     =   OrderOperatorByKeyCustom<LexicographicOrderDominatedByReverselength>;
+
+    type OrderOperatorForRowIndices                     =   LexicographicOrderDominatedByReverselength;
+
+    type OrderOperatorForColumnEntries                  =   OrderOperatorByKeyCustom<LexicographicOrderDominatedByReverselength>;
+
+    type OrderOperatorForColumnIndices                  =   LexicographicOrderDominatedByReverselength;
+
+    fn ring_operator( &self ) -> Self::RingOperator {
+        self.ring_operator.clone()
+    }
+
+    fn order_operator_for_row_entries( &self ) -> Self::OrderOperatorForRowEntries {
+        OrderOperatorByKeyCustom::new(LexicographicOrderDominatedByReverselength::new())
+    }
+
+    fn order_operator_for_row_indices( &self ) -> Self::OrderOperatorForRowIndices {
+        LexicographicOrderDominatedByReverselength::new()
+    }
+
+    fn order_operator_for_column_entries( &self ) -> Self::OrderOperatorForColumnEntries {
+        OrderOperatorByKeyCustom::new(LexicographicOrderDominatedByReverselength::new())
+    }
+
+    fn order_operator_for_column_indices( &self ) -> Self::OrderOperatorForColumnIndices {
+        LexicographicOrderDominatedByReverselength::new()
     }
 }
 
 
 
-//  ORACLE MINOR ASCEND
-//  ------------------------------------------
 
-impl < Vertex, RingOperator, RingElement >
-    
-    ViewColAscend for
 
-    BoundaryMatrixDowker
-        < Vertex, RingOperator, RingElement >
+
+
+
+
+
+impl < Vertex, RingOperator >
+
+    MatrixOracleOperations for 
+
+    DowkerComplex
+        < Vertex, RingOperator >
+
+    where // these are the requirements to implement the `MatrixOracle` trait
+        Vertex:                     Clone + Debug + Ord + Hash,
+        RingOperator:               Clone + RingOperations,
+        usize:                      From< Vertex >,
+
+{}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+impl < Vertex, RingOperator >
+
+    ChainComplex for 
+
+    DowkerComplex
+        < Vertex, RingOperator >
 
     where
-        Vertex:             Clone + Ord + Hash,
-        RingOperator:       Clone + Semiring< RingElement > + Ring< RingElement >,
-        RingElement:        Clone,
+        Vertex:                     Clone + Debug + Ord + Hash,
+        RingOperator:               Clone + RingOperations,
+        usize:                      From< Vertex >,
 {
-    type ViewMinorAscend            =   SimplexBoundaryAscend< Vertex, RingOperator, RingElement >;
-    type ViewMinorAscendIntoIter    =   Self::ViewMinorAscend;
+    type BasisVectorIndicesIterable         =   Vec< Vec< Vertex > >;
 
-    fn view_minor_ascend( &self, keymaj: Self::RowIndex ) -> Self::ViewMinorAscend {
-        SimplexBoundaryAscend::new( keymaj, self.ring_operator.clone() )
+    /// Returns simplices of dimension `dimension` in lexicographic order.
+    fn basis_vector_indices_for_dimension( &self, dimension: isize ) -> Self::BasisVectorIndicesIterable {
+        dimension_d_simplices_in_lexicographic_order_iter(
+            & self.relation_rows, 
+            dimension
+        ).collect()
+    }
+
+    fn dimension_for_basis_vector_with_index( &self, index: & Self::RowIndex ) -> Result<isize, Self::RowIndex> {
+        if ! self.has_row_for_index(index) {
+            return Err( index.clone() )
+        }
+        Ok( (index.len() as isize) - 1 )
     }
 }
 
-//  ORACLE MINOR DESCEND
-//  ------------------------------------------
 
-impl < Vertex, RingOperator, RingElement >
-    
-    ViewColDescend for
 
-    BoundaryMatrixDowker
-        < Vertex, RingOperator, RingElement >
 
-    where
-        Vertex:             Clone + Ord + Hash,
-        RingOperator:       Clone + Semiring< RingElement > + Ring< RingElement >,
-        RingElement:        Clone,
-{
-    type ViewMinorDescend           =   SimplexBoundaryDescend< Vertex, RingOperator, RingElement >;
-    type ViewMinorDescendIntoIter   =   Self::ViewMinorDescend;
 
-    fn view_minor_descend( &self, keymaj: Self::RowIndex ) -> Self::ViewMinorDescend {
-        SimplexBoundaryDescend::new( keymaj, self.ring_operator.clone() )
-    }
-}
+
+
 
 
 
@@ -445,7 +633,7 @@ impl < Vertex, RingOperator, RingElement >
 
 
 //  ===================================================================================
-//  MAJOR AND MINOR VIEWS
+//  ROWS AND COLUMNS
 //  ===================================================================================
 
 
@@ -460,27 +648,26 @@ impl < Vertex, RingOperator, RingElement >
 /// # Examples
 /// 
 /// ```
-/// use oat_rust::topology::simplicial::from::relation::CoboundaryDowkerDescend;
-/// use oat_rust::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;
+/// use oat_rust::topology::simplicial::from::relation::DowkerBoundaryMatrixRowReverse;
+/// use oat_rust::algebra::rings::types::field_prime_order::PrimeOrderField;
 /// use oat_rust::utilities::sequences_and_ordinals::SortedVec;
 /// 
-/// let ring_operator = PrimeOrderFieldOperator::new(3);
+/// let ring_operator = PrimeOrderField::new(3);
 /// let simplex = vec![1,3];
-/// let dowker_sets = vec![ SortedVec::from_iter( vec![0,1,2,3,4] ) ];
+/// let relation_rows = vec![ SortedVec::from_iter( vec![0,1,2,3,4] ).unwrap() ];
 /// // note we have to unwrap, because the constructor returns a Result
-/// let coboundary = CoboundaryDowkerDescend::from_vec_of_dowker_sets( simplex, &dowker_sets, ring_operator ).unwrap();
+/// let coboundary = DowkerBoundaryMatrixRowReverse::from_vec_of_dowker_sets( simplex, &relation_rows, ring_operator ).unwrap();
 /// 
 /// itertools::assert_equal( coboundary, vec![ (vec![1,3,4], 1), (vec![1,2,3], 2), (vec![0,1,3], 1) ]);
 /// ```
 #[derive(Clone, Debug)]
-pub struct CoboundaryDowkerDescend< Vertex, RingOperator, RingElement >
+pub struct DowkerBoundaryMatrixRowReverse< Vertex, RingOperator >
     where 
-        RingOperator:       Semiring< RingElement > + Ring< RingElement >,
-        RingElement:        Clone,
+        RingOperator:       RingOperations,
         Vertex:             Ord + Clone,
 {
     next_cofacet_opt:           Option< Vec< Vertex > >,
-    next_coefficient:           RingElement,
+    next_coefficient:           RingOperator::Element,
     vertices_to_insert:         Vec< Vertex >,              // should be sorted in ascending order
     retrieval_locus:            usize,                      // the place where the vertex inserted into `next_cofacet` was drawn from 
     insertion_locus:            usize,                      // this points to the place in `next_cofacet` where we inserted a vertex    
@@ -488,24 +675,23 @@ pub struct CoboundaryDowkerDescend< Vertex, RingOperator, RingElement >
 }   
 
 
-impl < Vertex, RingOperator, RingElement >
+impl < Vertex, RingOperator >
 
-CoboundaryDowkerDescend
-        < Vertex, RingOperator, RingElement >
+DowkerBoundaryMatrixRowReverse
+        < Vertex, RingOperator >
 
     where 
-        RingOperator:       Semiring< RingElement > + Ring< RingElement >,
-        RingElement:        Clone,
+        RingOperator:       RingOperations,
         Vertex:             Clone + Debug + Hash + Ord,
 {
-    /// Generates a [CoboundaryDowkerAscend] for a simplex, given a CSR representation of the binary dowker matrix.    
-    pub fn from_vec_of_dowker_sets( facet: Vec< Vertex >, dowker_sets: &Vec< SortedVec< Vertex > >, ring_operator: RingOperator ) -> Result< Self, Vec< Vertex > > {
+    /// Generates a [DowkerBoundaryMatrixRow] for a simplex, given a CSR representation of the binary dowker matrix.    
+    pub fn from_vec_of_dowker_sets( facet: Vec< Vertex >, relation_rows: &Vec< SortedVec< Vertex > >, ring_operator: RingOperator ) -> Result< Self, Vec< Vertex > > {
 
         //  the coboundary of the empty simplex is zero;
         //  ---------------------------------------------
         if facet.is_empty() {
             // this iterator will be identified as empty, because `vertices_to_insert` is empty
-            return Ok( CoboundaryDowkerDescend{
+            return Ok( DowkerBoundaryMatrixRowReverse{
                 next_cofacet_opt:           None,
                 next_coefficient:           RingOperator::one(),   // these are arbitrary values            
                 vertices_to_insert:         vec![],                // these are arbitrary values  
@@ -521,7 +707,7 @@ CoboundaryDowkerDescend
             return Err( vec );
         }
         let facet = facet.unwrap(); // we have handled the error, so it's safe to unwrap
-        let vertices_to_insert: Vec< Vertex >   =   dowker_sets
+        let vertices_to_insert: Vec< Vertex >   =   relation_rows
                                                         .iter()
                                                         .filter( |x|  x.contains_subset( &facet ) )
                                                         .map(|x| x.vec().iter())
@@ -538,7 +724,7 @@ CoboundaryDowkerDescend
         // let mut vertices_to_insert = SortedVec::new();
 
         // // take the union of all dowker super-simplices
-        // for dowker_set in dowker_sets
+        // for dowker_set in relation_rows
         //                                 .iter() // iterate over dowker siplices
         //                                 .filter( |x| x.is_superset( &facet_vertex_set) ) // only keep those that contain the facet
         //     {
@@ -559,7 +745,7 @@ CoboundaryDowkerDescend
         //  ---------------------------------------------
         if vertices_to_insert.is_empty() {
             // this iterator is empty, because `next_cofacet_opt` is None
-            return Ok( CoboundaryDowkerDescend{
+            return Ok( DowkerBoundaryMatrixRowReverse{
                 next_cofacet_opt:           None,
                 next_coefficient:           RingOperator::one(),     // these are abitrary values            
                 vertices_to_insert:         vec![],                  // these are abitrary values  
@@ -586,7 +772,7 @@ CoboundaryDowkerDescend
         }
         next_cofacet.insert( insertion_locus, inserted_vertex );
 
-        Ok( CoboundaryDowkerDescend{
+        Ok( DowkerBoundaryMatrixRowReverse{
             next_cofacet_opt:           Some( next_cofacet ),
             next_coefficient:           coefficient,
             vertices_to_insert,         // should be sorted in ascending order
@@ -597,29 +783,26 @@ CoboundaryDowkerDescend
 
     }
 
-    // /// Generates a [CoboundaryDowkerAscend] for a simplex, given CSR and CSC representations of the binary dowker matrix.
+    // /// Generates a [DowkerBoundaryMatrixRow] for a simplex, given CSR and CSC representations of the binary dowker matrix.
     // fn from_csr_and_csc_matrices( facet: Vec< Vertex >, dowker_matrix_csr: Vec< SortedVec< Vertex > >, dowker_matrix_csc: Vec< SortedVec< Vertex > > ) {        
     // }
 }
 
 
-impl < Vertex, RingOperator, RingElement >
+impl < Vertex, RingOperator >
 
     Iterator for
 
-    CoboundaryDowkerDescend
-        < Vertex, RingOperator, RingElement >
+    DowkerBoundaryMatrixRowReverse
+        < Vertex, RingOperator >
 
     where 
-        RingOperator:       Semiring< RingElement > + Ring< RingElement >,
-        RingElement:        Clone,
+        RingOperator:       RingOperations,
         Vertex:             Ord + Clone,   
 {
-    type Item = (Vec<Vertex>, RingElement);
+    type Item = (Vec<Vertex>, RingOperator::Element);
 
     fn next( &mut self ) -> Option< Self::Item >{
-
-        // println!("{:?} -- !!!! DELETE THIS AND ALL DEBUG REQUIREMENTS ON THIS IMPLEMENTATION OF ITER", &self);
 
         match self.next_cofacet_opt {
             None => { None }
@@ -670,28 +853,27 @@ impl < Vertex, RingOperator, RingElement >
 /// # Examples
 /// 
 /// ```
-/// use oat_rust::topology::simplicial::from::relation::CoboundaryDowkerAscend;
-/// use oat_rust::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;
+/// use oat_rust::topology::simplicial::from::relation::DowkerBoundaryMatrixRow;
+/// use oat_rust::algebra::rings::types::field_prime_order::PrimeOrderField;
 /// use oat_rust::utilities::sequences_and_ordinals::SortedVec;
 /// 
-/// let ring_operator = PrimeOrderFieldOperator::new(3);
+/// let ring_operator = PrimeOrderField::new(3);
 /// let simplex = vec![1,3];
-/// let dowker_sets = vec![ SortedVec::from_iter( vec![0,1,2,3,4] ) ];
+/// let relation_rows = vec![ SortedVec::from_iter( vec![0,1,2,3,4] ).unwrap() ];
 /// 
 /// // note we have to unwrap, because the constructor returns a Result
-/// let coboundary = CoboundaryDowkerAscend::from_vec_of_dowker_sets( simplex, &dowker_sets, ring_operator ).unwrap();
+/// let coboundary = DowkerBoundaryMatrixRow::from_vec_of_dowker_sets( simplex, &relation_rows, ring_operator ).unwrap();
 /// 
 /// itertools::assert_equal( coboundary, vec![ (vec![0,1,3], 1), (vec![1,2,3], 2), (vec![1,3,4], 1) ]);
 /// ```
 #[derive(Clone, Debug)]
-pub struct CoboundaryDowkerAscend< Vertex, RingOperator, RingElement >
+pub struct DowkerBoundaryMatrixRow< Vertex, RingOperator >
     where 
-        RingOperator:       Semiring< RingElement > + Ring< RingElement >,
-        RingElement:        Clone,
+        RingOperator:       RingOperations,
         Vertex:             Ord + Clone,
 {
     next_cofacet_opt:           Option< Vec< Vertex > >,
-    next_coefficient:           RingElement,
+    next_coefficient:           RingOperator::Element,
     vertices_to_insert:         Vec< Vertex >,              // should be sorted in ascending order
     retrieval_locus:            usize,                      // the place where the vertex inserted into `next_cofacet` was drawn from 
     insertion_locus:            usize,                      // this points to the place in `next_cofacet` where we inserted a vertex    
@@ -699,24 +881,23 @@ pub struct CoboundaryDowkerAscend< Vertex, RingOperator, RingElement >
 }   
 
 
-impl < Vertex, RingOperator, RingElement >
+impl < Vertex, RingOperator >
 
-    CoboundaryDowkerAscend
-        < Vertex, RingOperator, RingElement >
+    DowkerBoundaryMatrixRow
+        < Vertex, RingOperator >
 
     where 
-        RingOperator:       Semiring< RingElement > + Ring< RingElement >,
-        RingElement:        Clone,
+        RingOperator:       RingOperations,
         Vertex:             Clone + Debug + Hash + Ord,
 {
-    /// Generates a [CoboundaryDowkerAscend] for a simplex, given a CSR representation of the binary dowker matrix.    
-    pub fn from_vec_of_dowker_sets( facet: Vec< Vertex >, dowker_sets: &Vec< SortedVec< Vertex > >, ring_operator: RingOperator ) -> Result< Self, Vec< Vertex > > {
+    /// Generates a [DowkerBoundaryMatrixRow] for a simplex, given a CSR representation of the binary dowker matrix.    
+    pub fn from_vec_of_dowker_sets( facet: Vec< Vertex >, relation_rows: &Vec< SortedVec< Vertex > >, ring_operator: RingOperator ) -> Result< Self, Vec< Vertex > > {
 
         //  the coboundary of the empty simplex is zero;
         //  ---------------------------------------------
         if facet.is_empty() {
             // this iterator will be identified as empty, because `vertices_to_insert` is empty
-            return Ok( CoboundaryDowkerAscend{
+            return Ok( DowkerBoundaryMatrixRow{
                 next_cofacet_opt:           None,
                 next_coefficient:           RingOperator::one(),   // these are arbitrary values            
                 vertices_to_insert:         vec![],                // these are arbitrary values  
@@ -733,7 +914,7 @@ impl < Vertex, RingOperator, RingElement >
             return Err( vec );
         }
         let facet = facet.unwrap(); // we have handled the error, so it's safe to unwrap
-        let vertices_to_insert: Vec< Vertex >   =   dowker_sets
+        let vertices_to_insert: Vec< Vertex >   =   relation_rows
                                                         .iter()
                                                         .filter( |x|  x.contains_subset( &facet ) )
                                                         .map(|x| x.vec().iter())
@@ -748,7 +929,7 @@ impl < Vertex, RingOperator, RingElement >
         // let mut vertices_to_insert = SortedVec::new();
 
         // // take the union of all dowker super-simplices
-        // for dowker_simplex in dowker_sets
+        // for dowker_simplex in relation_rows
         //                                 .iter() // iterate over dowker siplices
         //                                 .filter( |x| x.is_superset( &facet_vertex_set) ) // only keep those that contain the facet
         //     {
@@ -769,7 +950,7 @@ impl < Vertex, RingOperator, RingElement >
         //  ---------------------------------------------
         if vertices_to_insert.is_empty() {
             // this iterator is empty, because `vertices_to_insert` is empty
-            return Ok( CoboundaryDowkerAscend{
+            return Ok( DowkerBoundaryMatrixRow{
                 next_cofacet_opt:           None,
                 next_coefficient:           RingOperator::one(),
                 vertices_to_insert:         vec![],     
@@ -796,7 +977,7 @@ impl < Vertex, RingOperator, RingElement >
         }
         next_cofacet.insert( insertion_locus, inserted_vertex );
 
-        Ok( CoboundaryDowkerAscend{
+        Ok( DowkerBoundaryMatrixRow{
             next_cofacet_opt:           Some( next_cofacet ),
             next_coefficient:           coefficient,
             vertices_to_insert,         // should be sorted in ascending order
@@ -807,27 +988,28 @@ impl < Vertex, RingOperator, RingElement >
 
     }
 
-    // /// Generates a [CoboundaryDowkerAscend] for a simplex, given CSR and CSC representations of the binary dowker matrix.
+    // /// Generates a [DowkerBoundaryMatrixRow] for a simplex, given CSR and CSC representations of the binary dowker matrix.
     // fn from_csr_and_csc_matrices( facet: Vec< Vertex >, dowker_matrix_csr: Vec< SortedVec< Vertex > >, dowker_matrix_csc: Vec< SortedVec< Vertex > > ) {        
     // }
 }
 
 
-impl < Vertex, RingOperator, RingElement >
+impl < Vertex, RingOperator >
 
     Iterator for
 
-    CoboundaryDowkerAscend
-        < Vertex, RingOperator, RingElement >
+    DowkerBoundaryMatrixRow
+        < Vertex, RingOperator >
 
     where 
-        RingOperator:       Semiring< RingElement > + Ring< RingElement >,
-        RingElement:        Clone,
+        RingOperator:       RingOperations,
         Vertex:             Ord + Clone,   
 {
-    type Item = (Vec<Vertex>, RingElement);
+    type Item = (Vec<Vertex>, RingOperator::Element);
 
     fn next( &mut self ) -> Option< Self::Item >{
+
+        // println!("{:?} -- DELETE THIS AND ALL DEBUG REQUIREMENTS ON THIS IMPLEMENTATION OF ITER", &self);
 
         match self.next_cofacet_opt {
             None => { None }
@@ -868,21 +1050,83 @@ impl < Vertex, RingOperator, RingElement >
 
 
 
-impl < Vertex, RingOperator, RingElement >
 
-    ParetoShortCircuit< (Vec<Vertex>, RingElement) > for
 
-    CoboundaryDowkerAscend
-        < Vertex, RingOperator, RingElement >
 
-    where 
-        RingOperator:       Semiring< RingElement > + Ring< RingElement >,
-        RingElement:        Clone,
-        Vertex:             Ord + Clone,   
-{
-    fn pareto_short_circuit(& self) -> Option< (Vec<Vertex>, RingElement) > {
-        None
+
+
+
+
+
+
+
+
+
+//  ===================================================================================
+//  CONSTRUCTORS
+//  ===================================================================================
+
+
+
+/// Construct a "sideways ladder".  
+/// 
+/// # Examples
+/// 
+/// The following is created by calling
+/// `sideways_ladder_edges( 0, 2 )`
+/// 
+/// ```text
+/// 1 ---- 3 ---- 5
+/// |      |      |
+/// |      |      |
+/// 0 ---- 2 ---- 4
+/// ```
+/// 
+/// The following is created by calling
+/// `sideways_ladder( 1,3 )`
+/// 
+/// ```text
+/// 3 ---- 5 ---- 7 ---- 9
+/// |      |      |      |
+/// |      |      |      |
+/// 2 ---- 4 ---- 6 ---- 8
+/// ```
+/// # Code example
+/// 
+/// ```
+/// use oat_rust::topology::simplicial::from::relation::sideways_ladder_edges;
+/// 
+/// // construct the edges
+/// let number_of_holes         =   1;
+/// let offset_from_left        =   1;
+/// let mut edges           =   sideways_ladder_edges(number_of_holes, offset_from_left);
+/// edges.sort();
+/// 
+/// // this is the ground truth
+/// let ground_truth            =   vec![ 
+///                                     vec![2,3], 
+///                                     vec![2,4],
+///                                     vec![3,5],
+///                                     vec![4,5],                                            
+///                                 ];
+/// 
+/// assert_eq!( edges, ground_truth );
+/// ```
+pub fn sideways_ladder_edges( offset_from_left: usize, number_of_holes: usize ) -> Vec< Vec< usize > > {
+    let mut hyperedges                              =   Vec::with_capacity( 1 + 3 * number_of_holes );
+
+    // vertical parts
+    for p in offset_from_left .. offset_from_left + number_of_holes + 1 {
+        hyperedges.push( vec![2*p, 2*p + 1] )
     }
+        
+    // horizontal parts
+    for p in offset_from_left .. offset_from_left + number_of_holes {
+        hyperedges.push( vec![ 2*p,     2*(p+1)     ] );
+        hyperedges.push( vec![ 2*p + 1, 2*(p+1) + 1 ] );
+    }
+
+    return hyperedges
 }
 
 
@@ -890,13 +1134,20 @@ impl < Vertex, RingOperator, RingElement >
 
 
 
-//  ===================================================================================
-//  OPTIMIZATION
-//  ===================================================================================
 
 
 
-pub fn optimize() { println!("NOTE THAT WE REALLY NEED A TOOL TO IMINIMIZE A CYCLE WITHIN A FIXED HOMOLOGY CLASS"); }
+
+
+
+
+
+
+
+
+
+
+
 
 
 //  ===================================================================================
@@ -906,89 +1157,60 @@ pub fn optimize() { println!("NOTE THAT WE REALLY NEED A TOOL TO IMINIMIZE A CYC
 
 
 
-use crate::algebra::matrices::debug::{verify_view_minor_descend_is_sorted_strictly, verify_view_major_ascend_is_sorted_strictly, verify_viewmajorascend_compatible_with_viewminordescend, verify_viewmajorascend_compatible_with_viewmajordescend, verify_viewminorascend_compatible_with_viewminordescend};
+use crate::algebra::matrices::debug::{matrix_oracle_is_internally_consistent, matrix_order_operators_are_internally_consistent };
+use crate::algebra::rings::types::field_prime_order::PrimeOrderField;
 
 
-/// A tool to check that 
-pub fn dowker_boundary_diagnostic<T: Clone + Hash + Debug + Ord>( dowker_simplices_vec: Vec<Vec<T>>, maxdim: isize, ) -> Result<(), Vec< T > > {
+/// Builds a Dowker boundary matrix for the user-provided list of relation rows, and validates it with [matrix_oracle_is_internally_consistent] and [matrix_order_operators_are_internally_consistent]
+/// 
+/// The `relation_rows` argument is a list of sorted lists, where each sorted list records the column indices of the nonzero entries in a given row of the 
+/// binary relation matrix.
+pub fn validate_dowker_boundary_matrix<Vertex>( 
+        relation_rows: Vec<SortedVec<Vertex>>, 
+        max_dim: isize, 
+    )  
 
-    // first ensure simplices are sorted
-    let dowker_sets: Result< Vec<SortedVec<T>>, Vec<T> > = dowker_simplices_vec.into_iter().map(|x| SortedVec::new(x) ).collect();
-    let dowker_sets 
-        =   dowker_sets.map_err(
-                |vector|
-                {
-                    println!("Error: attempted to convert a Vec< Vec<T> > to a Vec< SortedVec< T > >, but one of the inner vectors wasn't sorted: {:?}", & vector );
-                    vector         
-                }
-            )?;
-
-    let ring_operator                =   PrimeOrderFieldOperator::new(47);
-    // define the boundary matrix
-    let boundary_matrix = BoundaryMatrixDowker::new( dowker_sets.clone(), ring_operator );        
-
-    // define an iterator to run over all simplices; simplices are ordered first by dimension (ascending), then by lexicographic order (descending)
-    let iter_keymaj = boundary_matrix.row_indices_in_descending_order( maxdim );     
-
-
-    let keys = iter_keymaj.clone().collect_vec();
-    // println!("keys: {:?}", keys );
-
-    for dim in 0 .. maxdim+1 {
-        let v: Vec<_> = subsimplices_dim_d_iter_descend( &dowker_sets, dim ).unwrap().collect();
-        // println!("KEYS OF DIMENSION {:?} === {:?}", dim, v );
-    }
-
-    // check that the input is strictly sorted, first by dimension 
-    let mut old_opt: Option< Vec< T > > = None;
-    for new in iter_keymaj.clone() {
-        if let Some( old ) = old_opt {
-            if ( old.len() == new.len() ) && ( new >= old ) {
-                panic!("The keymaj iterator is not strictly sorted, first by dimension (ascending) then lexicographically (descending)")
-            }            
-        }
-        old_opt = Some( new );
-    }
+    where 
+        Vertex:     Clone + Hash + Debug + Ord,
+        usize:      From< Vertex >,
+{
     
+    // define the boundary matrix
+    // --------------------------
+
+    let ring_operator                               =   PrimeOrderField::new(47);    
+    let boundary_matrix                             =   DowkerComplex::new( relation_rows.clone(), ring_operator );        
+
+    // verify that the matrix lookup operations are internally consistent
+    // ------------------------------------------------------------------
+
+    // get row indices in order
+    let mut sorted_row_indices: Vec<_>               =   boundary_matrix.simplices_in_row_reduction_order( max_dim ).collect();
+    ( &mut sorted_row_indices ).reverse(); // row reduction order is the REVERSE of the actual order on rows
+
+    // get column indices in order    
+    let mut sorted_column_indices: Vec<_>               =   boundary_matrix.simplices_in_row_reduction_order( max_dim + 1 ).collect();
+    ( &mut sorted_column_indices ).reverse(); // row reduction order is the REVERSE of the actual order on rows    
 
 
-    // if verbose {
-    //     println!("major views");
-    //     for keymaj in iter_keymaj.clone() {
-    //         println!("row {:?} = ", boundary_matrix.view_major_ascend(keymaj).collect_vec() );
-    //     }
-    //     println!("minor views");
-    //     for keymaj in iter_keymaj.clone() {
-    //         println!("column {:?} = ", boundary_matrix.view_minor_descend(keymaj).collect_vec() );
-    //     }        
-    // }    
-
-    let print_fn = |x: Vec< Vec<T> >| println!("{:?}", x );
-
-    // check that major ascending views are sorted in strictly ascending order / minor descending views are sorted in strictly descending order
-    verify_view_major_ascend_is_sorted_strictly(  & boundary_matrix, iter_keymaj.clone(), OrderOperatorAuto, print_fn );
-    verify_view_minor_descend_is_sorted_strictly( & boundary_matrix, iter_keymaj.clone(), OrderOperatorAutoReverse::new(), print_fn );    // NOTE we use GT for this one, because order is reversed
-
-    // check that ascending major views agree with descending MINOR views
-    verify_viewmajorascend_compatible_with_viewminordescend(
+    assert!(
+        matrix_oracle_is_internally_consistent(
             & boundary_matrix,
-            iter_keymaj.clone(),
-            iter_keymaj.clone(),
-        );
-
-    // check that ascending major views agree with descending MAJOR views            
-    verify_viewmajorascend_compatible_with_viewmajordescend(
-            & boundary_matrix,
-            iter_keymaj.clone(),
-        );
-
-    // check that ascending MINOR views agree with descending MINOR views            
-    verify_viewminorascend_compatible_with_viewminordescend(
-        & boundary_matrix,
-        iter_keymaj.clone(),            
+            sorted_row_indices.clone(),
+            sorted_column_indices.clone(),
+        )
     );
 
-    Ok(())      
+    // verify that the matrix order operators are internally consistent
+    // ----------------------------------------------------------------
+    assert!(
+        matrix_order_operators_are_internally_consistent(
+            & boundary_matrix,
+            sorted_row_indices.clone(),
+            sorted_column_indices.clone(),
+        )
+        .is_ok()
+    ); 
 }
 
 
@@ -998,7 +1220,7 @@ pub fn dowker_boundary_diagnostic<T: Clone + Hash + Debug + Ord>( dowker_simplic
 mod tests {
     
 
-use crate::utilities::random::rand_sequences;
+use crate::utilities::random::random_sequences;
 
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
@@ -1007,15 +1229,18 @@ use crate::utilities::random::rand_sequences;
     fn test_dowker_boundary_small(){
         
         // used for enumerating simplices
-        let dowker_simplices_vec =  
+        let relation_rows: Vec<Vec<usize>> =  
                 vec![ 
                         vec![0,1,2],
                         vec![0,3],                      
                         vec![1,3], 
                         vec![2,3]                                           
                     ];     
+        let relation_rows =     relation_rows.into_iter()
+                                    .map(|v| SortedVec::new(v).ok().unwrap() )
+                                    .collect::<Vec<_>>();
 
-        let _ = dowker_boundary_diagnostic( dowker_simplices_vec, 2 );
+        validate_dowker_boundary_matrix( relation_rows, 2 );
     }
 
 
@@ -1025,9 +1250,9 @@ use crate::utilities::random::rand_sequences;
         
         for _ in 0..10 {
             
-            let dowker_simplices_vec    =   rand_sequences(10, (0..7).step_by(2), 0.1 );
+            let relation_rows    =   random_sequences(7, (0..7).step_by(2), 0.1 );
             let _verbose = false;
-            let _ = dowker_boundary_diagnostic( dowker_simplices_vec, 2 );
+            validate_dowker_boundary_matrix( relation_rows, 2 );
         }
 
     }    
@@ -1040,7 +1265,7 @@ use crate::utilities::random::rand_sequences;
 
 #[cfg(test)]
 mod docstring_tests {
-    use crate::{topology::simplicial::simplices::vector::{subsimplices_dim_d_iter_ascend, subsimplices_dim_d_iter_descend, subsimplices_dim_0_thru_d_iter_ascend_dim_descend_lex}, utilities::order::OrderOperatorAuto};
+    use crate::topology::simplicial::simplices::vector::{dimension_d_simplices_in_lexicographic_order_iter, dimension_d_simplices_in_reverse_lexicographic_order_iter, dimension_0_through_d_simplices_in_ascending_dimension_descending_lexicographic_order_iter};
 
     
 
@@ -1050,10 +1275,10 @@ mod docstring_tests {
     fn docstring_test_dowker_homology() {
         use itertools::Itertools;
             
-        use crate::topology::simplicial::from::relation::BoundaryMatrixDowker;
+        use crate::topology::simplicial::from::relation::DowkerComplex;
             
-        use crate::algebra::chains::factored::factor_boundary_matrix;       
-        use crate::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;        
+        use crate::algebra::matrices::operations::umatch::differential::DifferentialUmatch;     
+        use crate::algebra::rings::types::field_prime_order::PrimeOrderField;        
       
         use crate::utilities::sequences_and_ordinals::SortedVec;
             
@@ -1061,12 +1286,13 @@ mod docstring_tests {
         // ----------
             
         // Define the maximum homology dimensino we want to compute.
+        let min_homology_dimension                         =   0;
         let max_homology_dimension                  =   2;
             
         // Define the ring operator for the finite field of order 3.
         // You can use this object to perform arithmetic operations, e.g., 
         // to add 1 and 1, you can run `ring_operator.add(1,1)`.
-        let ring_operator          =   PrimeOrderFieldOperator::new(3);
+        let ring_operator          =   PrimeOrderField::new(3);
             
         // We will build a dowker complex.
         // A dowker complex is defined by a vertex set V and a family S
@@ -1076,7 +1302,7 @@ mod docstring_tests {
             
         // Each dowker simplex is represented by a SortedVec of vertices.
         // We store the list of all such simplices inside a larger vector.
-        let dowker_simplices 
+        let dowker_simplices: Vec< SortedVec< usize > > 
             =   vec![    
                         vec![0,1,2], 
                         vec![0,3], 
@@ -1091,36 +1317,35 @@ mod docstring_tests {
         //  ---------------
             
         // This is a lazy object that generates rows/columns of the boundary matrix, on demand.
-        let boundary_matrix = BoundaryMatrixDowker::new( dowker_simplices.clone(), ring_operator );
+        let boundary_matrix = DowkerComplex::new( dowker_simplices.clone(), ring_operator );
             
         //  Simplex iterators
         //  -----------------
             
         // An iterator that runs over all triangles in the complex, in ascending 
         // lexicographic order
-        let _triangles_ascending_order = subsimplices_dim_d_iter_ascend( &dowker_simplices, 2);
+        let _triangles_ascending_order = dimension_d_simplices_in_lexicographic_order_iter( &dowker_simplices, 2);
             
         // An iterator that runs over all edges in the complex, in descending 
         // lexicographic order
-        let _triangles_descending_order = subsimplices_dim_d_iter_descend( &dowker_simplices, 2);   
+        let _triangles_descending_order = dimension_d_simplices_in_reverse_lexicographic_order_iter( &dowker_simplices, 2);   
             
         // An iterator that runs over simplices of dimension 0 through max_homology_dimension,
         // ordered first by dimension (ascending) and second by lexicographic order (descending)
-        let _row_indices = boundary_matrix.row_indices_in_descending_order( max_homology_dimension );
+        let _row_indices = boundary_matrix.simplices_in_row_reduction_order( max_homology_dimension );
 
         // row_indices contains a reference to boundary_matrix, which will cause problems. Instead,
         // we can construct an iterator that runs over the same sequence of simplices, like so:
-        let row_indices     =   subsimplices_dim_0_thru_d_iter_ascend_dim_descend_lex(&dowker_simplices, max_homology_dimension);
+        let row_indices     =   dimension_0_through_d_simplices_in_ascending_dimension_descending_lexicographic_order_iter(&dowker_simplices, max_homology_dimension);
             
         //  Homology computation (by matrix factorization)
         //  ----------------------------------------------
             
         // Factor the boundary matrix
-        let factored    =   factor_boundary_matrix( 
+        let factored    =   DifferentialUmatch::new( 
                                 boundary_matrix, 
-                                ring_operator, 
-                                OrderOperatorAuto, 
-                                row_indices,
+                                min_homology_dimension,
+                                max_homology_dimension,
                             );
                         
         //  Printing results
@@ -1128,13 +1353,13 @@ mod docstring_tests {
                         
         // Betti numbers.  For this computation we have to provide a
         // function that assigns a dimension to each index (i.e. to each simplex)
-        let betti_numbers   =   factored.betti_numbers(|x| x.len() as isize -1 ); 
+        let homology_dimensions   =   factored.betti_numbers(); 
         for dim in 0 .. 2 {
             println!(
                     // we'll insert two values into this string
                     "The betti number in dimension {:?} is {:?}.",
                     dim,                  // the dimension
-                    betti_numbers         // and the betti number
+                    homology_dimensions         // and the betti number
                         .get( & dim )     // this looks up a value in the hashmap
                         .unwrap_or( & 0)  // if the hashmap doesn't have the value, then use 0
                 );            
@@ -1146,7 +1371,7 @@ mod docstring_tests {
                 "The following are basis vectors for homology in dimensions 0 through {:?}",
                 max_homology_dimension,
             );
-        for (cycle_number, cycle) in factored.basis_harmonic().enumerate() {
+        for (cycle_number, cycle) in factored.homology_basis().enumerate() {
             // `cycle` is an iterator.  For convenience, collect the elements of the
             // iterator into a Rust vector.
             let cycle: Vec<_> = cycle.collect();
@@ -1155,18 +1380,152 @@ mod docstring_tests {
     }  
 
 
+    #[test]
     fn test() {
-        use crate::topology::simplicial::from::relation::CoboundaryDowkerAscend;
-        use crate::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;
+        use crate::topology::simplicial::from::relation::DowkerBoundaryMatrixRow;
+        use crate::algebra::rings::types::field_prime_order::PrimeOrderField;
         use crate::utilities::sequences_and_ordinals::SortedVec;
 
-        let ring_operator = PrimeOrderFieldOperator::new(3);
+        let ring_operator = PrimeOrderField::new(3);
         let simplex = vec![1,3];
-        let dowker_sets = vec![ SortedVec::from_iter( vec![0,1,2,3,4] ) ];
-        let coboundary = CoboundaryDowkerAscend::from_vec_of_dowker_sets( simplex, &dowker_sets, ring_operator ).unwrap();
+        let relation_rows = vec![ SortedVec::from_iter( vec![0,1,2,3,4] ).unwrap() ];
+        let coboundary = DowkerBoundaryMatrixRow::from_vec_of_dowker_sets( simplex, &relation_rows, ring_operator ).unwrap();
 
         itertools::assert_equal( coboundary, vec![ (vec![0,1,3], 1), (vec![1,2,3], 2), (vec![1,3,4], 1) ]);        
     }    
+
+
+    #[test]
+    fn doc_test_sideways_ladder() {
+        use crate::topology::simplicial::from::relation::sideways_ladder_edges;
+
+        // construct the edges
+        let number_of_holes         =   1;
+        let offset_from_left        =   1;
+        let mut edges           =   sideways_ladder_edges(number_of_holes, offset_from_left);
+        edges.sort();
+
+        // this is the ground truth
+        let ground_truth            =   vec![ 
+                                            vec![2,3], 
+                                            vec![2,4], 
+                                            vec![3,5], 
+                                            vec![4,5],
+                                        ];
+
+        assert_eq!( edges, ground_truth );
+    }   
+
+
+
+
+    #[test]
+    fn doc_test_misc_REDUNDANT_OK_TO_DELETE() {
+        use crate::algebra::matrices::operations::umatch::differential::DifferentialUmatch;   
+        use crate::algebra::rings::types::field_prime_order::PrimeOrderField;
+        use crate::topology::simplicial::from::relation::DowkerComplex;
+        use crate::topology::simplicial::simplices::vector::{dimension_d_simplices_in_lexicographic_order_iter, dimension_d_simplices_in_reverse_lexicographic_order_iter}; 
+        use crate::topology::simplicial::simplices::vector::dimension_0_through_d_simplices_in_ascending_dimension_descending_lexicographic_order_iter;        
+        use crate::utilities::sequences_and_ordinals::SortedVec;
+
+        use itertools::Itertools;
+
+        // Parameters
+        // ----------
+
+        // Define the maximum homology dimensino we want to compute.
+        let min_homology_dimension                  =   0;
+        let max_homology_dimension                  =   2;        
+
+        // Define the ring operator for the finite field of order 3.
+        // You can use this object to perform arithmetic operations, e.g., 
+        // to add 1 and 1, you can run `ring_operator.add(1,1)`.
+        let ring_operator          =   PrimeOrderField::new(3);
+
+        // We will build a dowker complex.
+        // A dowker complex is defined by a vertex set V and a family S
+        // of subsets of V.  A subset of V forms a simplex iff it is 
+        // a subset of some element of S.  We refer to the elements 
+        // of S as "dowker simplices".
+
+        // Each dowker simplex is represented by a SortedVec of vertices.
+        // We store the list of all such simplices inside a larger vector.
+        let dowker_simplices: Vec<SortedVec<usize>>
+            =   vec![    
+                        vec![0,1,2], 
+                        vec![0,3], 
+                        vec![1,3], 
+                        vec![2,3]  
+                    ]
+                    .into_iter()
+                    .map( |x| SortedVec::new(x).unwrap() )  // we unwrap because `new` can return an error
+                    .collect_vec();
+
+        //  Boundary matrix
+        //  ---------------
+
+        // This is a lazy object that generates rows/columns of the boundary matrix, on demand.
+        let boundary_matrix = DowkerComplex::new( dowker_simplices.clone(), ring_operator.clone() );
+
+        //  Simplex iterators
+        //  -----------------
+
+        // An iterator that runs over all triangles in the complex, in ascending 
+        // lexicographic order
+        let triangles_ascending_order = dimension_d_simplices_in_lexicographic_order_iter( &dowker_simplices, 2);
+
+        // An iterator that runs over all edges in the complex, in descending 
+        // lexicographic order
+        let triangles_descending_order = dimension_d_simplices_in_reverse_lexicographic_order_iter( &dowker_simplices, 2);   
+
+        // An iterator that runs over simplices of dimension 0 through max_homology_dimension,
+        // ordered first by dimension (ascending) and second by lexicographic order (descending)
+        let row_indices = boundary_matrix.simplices_in_row_reduction_order( max_homology_dimension );
+
+        // row_indices contains a reference to boundary_matrix, which will cause problems. Instead,
+        // we can construct an iterator that runs over the same sequence of simplices, like so:
+        let row_indices     =   dimension_0_through_d_simplices_in_ascending_dimension_descending_lexicographic_order_iter(&dowker_simplices, max_homology_dimension);
+
+        //  Homology computation (by matrix factorization)
+        //  ----------------------------------------------
+
+        // Factor the boundary matrix
+        let factored    =   DifferentialUmatch::new( 
+                                boundary_matrix, 
+                                min_homology_dimension,
+                                max_homology_dimension,
+                            );
+                        
+        //  Printing results
+        //  ----------------
+                        
+        // Betti numbers.  For this computation we have to provide a
+        // function that assigns a dimension to each index (i.e. to each simplex)
+        let homology_dimensions   =   factored.betti_numbers(); 
+        for dim in 0 .. 2 {
+            println!(
+                    // we'll insert two values into this string
+                    "The betti number in dimension {:?} is {:?}.",
+                    dim,                  // the dimension
+                    homology_dimensions         // and the betti number
+                        .get( & dim )     // this looks up a value in the hashmap
+                        .unwrap_or( & 0)  // if the hashmap doesn't have the value, then use 0
+                );            
+        }
+        println!(""); // insert line break
+
+        // Cycle representatives for homology
+        println!(
+                "The following are basis vectors for homology in dimensions 0 through {:?}",
+                max_homology_dimension,
+            );
+        for (cycle_number, cycle) in factored.homology_basis().enumerate() {
+            // `cycle` is an iterator.  For convenience, collect the elements of the
+            // iterator into a Rust vector.
+            let cycle: Vec<_> = cycle.collect();
+            println!("Basis vector {:?} = {:?}", cycle_number, cycle);
+        }
+    }     
 
 }
 

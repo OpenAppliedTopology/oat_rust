@@ -1,7 +1,7 @@
 //! Boundaries of filtered and unfiltered simplices
 
 
-use crate::algebra::rings::operator_traits::{Ring, Semiring};
+use crate::algebra::rings::traits::RingOperations;
 
 
 
@@ -22,38 +22,36 @@ use crate::algebra::rings::operator_traits::{Ring, Semiring};
 /// 
 /// ```
 /// use oat_rust::topology::simplicial::boundary::SimplexBoundaryDescend;
-/// use oat_rust::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;
+/// use oat_rust::algebra::rings::types::field_prime_order::PrimeOrderField;
 /// 
-/// let ring_operator = PrimeOrderFieldOperator::new(3);
+/// let ring_operator = PrimeOrderField::new(3);
 /// let simplex = vec![0,1,2];
 /// let boundary = SimplexBoundaryDescend::new( simplex, ring_operator );
 /// 
 /// itertools::assert_equal( boundary, vec![ (vec![1,2], 1), (vec![0,2], 2), (vec![0,1], 1) ]);
 /// ```
 pub struct SimplexBoundaryDescend
-                < Vertex, RingOperator, RingElement >   
+                < Vertex, RingOperator, >   
     where
         Vertex:         Clone + Ord,
-        RingOperator:   Semiring< RingElement > + Ring< RingElement >,
-        RingElement:    Clone,
+        RingOperator:   RingOperations,
 {
     facet_opt:              Option< Vec< Vertex > >, // a facet that will be returned when `.next()` is called
     vertex_removed:         Vertex, // the vertex that has been removed
     removal_locus:          usize,  // the slot from which that vertex has been removed
-    coefficient:            RingElement,
+    coefficient:            RingOperator::Element,
     ring_operator:          RingOperator,
 }
 
 
-impl < Vertex, RingOperator, RingElement >
+impl < Vertex, RingOperator, >
     
     SimplexBoundaryDescend
-        < Vertex, RingOperator, RingElement >   
+        < Vertex, RingOperator, >   
 
     where
         Vertex:         Clone + Ord,
-        RingOperator:   Semiring< RingElement > + Ring< RingElement >,
-        RingElement:    Clone,  
+        RingOperator:   RingOperations,
 {
     /// Throws an error if `simplex` is an empty vector.
     pub fn new( mut simplex: Vec< Vertex >, ring_operator: RingOperator ) -> Self {
@@ -90,19 +88,18 @@ impl < Vertex, RingOperator, RingElement >
 //  IMPLEMENT ITERATOR
 //  ------------------------------------------
 
-impl < Vertex, RingOperator, RingElement >
+impl < Vertex, RingOperator, >
 
     Iterator for
     
     SimplexBoundaryDescend
-        < Vertex, RingOperator, RingElement >   
+        < Vertex, RingOperator, >   
 
     where
         Vertex:         Clone + Ord,
-        RingOperator:   Semiring< RingElement > + Ring< RingElement >,
-        RingElement:    Clone,        
+        RingOperator:   RingOperations,  
 {
-    type Item = ( Vec< Vertex >, RingElement );
+    type Item = ( Vec< Vertex >, RingOperator::Element );
 
     fn next( &mut self ) -> Option< Self::Item > {
 
@@ -133,30 +130,30 @@ impl < Vertex, RingOperator, RingElement >
 
 
 // pub struct SimplexBoundaryDescend
-//                 < Vertex, RingOperator, RingElement >   
+//                 < Vertex, RingOperator, >   
 //     where
 //         Vertex:         Clone + Ord,
-//         RingOperator:   Semiring< RingElement > + Ring< RingElement >,
+//         RingOperator:   Ring,
 //         RingElement:    Clone,
 // {
 //     facet:                  Vec< Vertex >,
 //     vertex_removed:         Vertex,
 //     prior_removal_locus:    usize,
-//     coefficient:            RingElement,
+//     coefficient:            RingOperator::ElementOfRing,
 //     ring_operator:          RingOperator,
 // }
 
 
-// impl < Vertex, RingOperator, RingElement >
+// impl < Vertex, RingOperator, >
 
 //     Iterator for
     
 //     SimplexBoundaryDescend
-//         < Vertex, RingOperator, RingElement >   
+//         < Vertex, RingOperator, >   
 
 //     where
 //         Vertex:         Clone + Ord,
-//         RingOperator:   Semiring< RingElement > + Ring< RingElement >,
+//         RingOperator:   Ring,
 //         RingElement:    Clone,        
 // {
 //     type Item = ( Vec< Vertex >, RingElement );
@@ -192,14 +189,14 @@ impl < Vertex, RingOperator, RingElement >
 
 
 
-// impl < Vertex, RingOperator, RingElement >
+// impl < Vertex, RingOperator, >
     
 //     SimplexBoundaryDescend
-//         < Vertex, RingOperator, RingElement >   
+//         < Vertex, RingOperator, >   
 
 //     where
 //         Vertex:         Clone + Ord,
-//         RingOperator:   Semiring< RingElement > + Ring< RingElement >,
+//         RingOperator:   Ring,
 //         RingElement:    Clone,  
 // {
 //     /// Throws an error if `simplex` is an empty vector.
@@ -247,38 +244,36 @@ impl < Vertex, RingOperator, RingElement >
 /// 
 /// ```
 /// use oat_rust::topology::simplicial::boundary::SimplexBoundaryAscend;
-/// use oat_rust::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;
+/// use oat_rust::algebra::rings::types::field_prime_order::PrimeOrderField;
 /// 
-/// let ring_operator = PrimeOrderFieldOperator::new(3);
+/// let ring_operator = PrimeOrderField::new(3);
 /// let simplex = vec![0,1,2];
 /// let boundary = SimplexBoundaryAscend::new( simplex, ring_operator );
 /// 
 /// itertools::assert_equal( boundary, vec![ (vec![0,1], 1), (vec![0,2], 2), (vec![1,2], 1) ]);
 /// ```
 pub struct SimplexBoundaryAscend
-                < Vertex, RingOperator, RingElement >   
+                < Vertex, RingOperator, >   
     where
         Vertex:         Clone + Ord,
-        RingOperator:   Semiring< RingElement > + Ring< RingElement >,
-        RingElement:    Clone,
+        RingOperator:   RingOperations,
 {
     facet_opt:              Option< Vec< Vertex > >, // a facet that will be returned when `.next()` is called
     vertex_removed:         Vertex, // the vertex that has been removed
     removal_locus:          usize,  // the slot from which that vertex has been removed
-    coefficient:            RingElement,
+    coefficient:            RingOperator::Element,
     ring_operator:          RingOperator,
 }
 
 
-impl < Vertex, RingOperator, RingElement >
+impl < Vertex, RingOperator, >
     
     SimplexBoundaryAscend
-        < Vertex, RingOperator, RingElement >   
+        < Vertex, RingOperator, >   
 
     where
         Vertex:         Clone + Ord,
-        RingOperator:   Semiring< RingElement > + Ring< RingElement >,
-        RingElement:    Clone,  
+        RingOperator:   RingOperations,
 {
     /// Throws an error if `simplex` is an empty vector.
     pub fn new( mut simplex: Vec< Vertex >, ring_operator: RingOperator ) -> Self {
@@ -315,19 +310,18 @@ impl < Vertex, RingOperator, RingElement >
 //  IMPLEMENT ITERATOR
 //  ------------------------------------------
 
-impl < Vertex, RingOperator, RingElement >
+impl < Vertex, RingOperator, >
 
     Iterator for
     
     SimplexBoundaryAscend
-        < Vertex, RingOperator, RingElement >   
+        < Vertex, RingOperator, >   
 
     where
         Vertex:         Clone + Ord,
-        RingOperator:   Semiring< RingElement > + Ring< RingElement >,
-        RingElement:    Clone,        
+        RingOperator:   RingOperations,
 {
-    type Item = ( Vec< Vertex >, RingElement );
+    type Item = ( Vec< Vertex >, RingOperator::Element );
 
     fn next( &mut self ) -> Option< Self::Item > {
 

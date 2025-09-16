@@ -15,8 +15,8 @@
 //! # Three commands for 95% of uses
 //!
 //! Most users only need two functions to work with HIT's:
-//! - [`hit_merge_ascend`] creates a HIT
-//! - [`bulk_insert`](HitMerge::bulk_insert) modifies the HIT by inserting a new collection of iterators.
+//! - [`hit_merge`] creates a HIT
+//! - [`bulk_insert`](IteratorsMergedInSortedOrder::bulk_insert) modifies the HIT by inserting a new collection of iterators.
 //! - `hit_merge_by_predicate` is both a [function](hit_merge_by_predicate) and (for convenience) a [trait method](HitMergeByPredicateTrait::hit_merge_by_predicate), which allows
 //! the user to specify their own order on entries.  This can be useful, for example,
 //! if you wish to merge several iterators into a single iterator that returns values in *descending* order. 
@@ -31,19 +31,19 @@
 //! # Examples
 //! 
 //! ```
-//! // Import the definition of the `hit_merge_ascend` function; 
-//! use oat_rust::utilities::iterators::merge::hit::hit_merge_ascend;
+//! // Import the definition of the `hit_merge` function; 
+//! use oat_rust::utilities::iterators::merge::hit::hit_merge;
 //! 
-//! // The `bulk_insert` function is a method on the `HitMerge` struct; 
+//! // The `bulk_insert` function is a method on the `IteratorsMergedInSortedOrder` struct; 
 //! // so to import the function, we import the struct.
-//! use oat_rust::utilities::iterators::merge::hit::HitMerge;
+//! use oat_rust::utilities::iterators::merge::hit::IteratorsMergedInSortedOrder;
 //! 
 //! // Define two iterators
 //! let iter_1 = vec![0, 2, ];
 //! let iter_2 = vec![1, 3, ];
 //! 
 //! // Merge the iterators into a HIT
-//! let mut hit = hit_merge_ascend( vec![ iter_1, iter_2 ] );
+//! let mut hit = hit_merge( vec![ iter_1, iter_2 ] );
 //! 
 //! // The HIT returns entries from both iterators, in ascending order
 //! assert_eq!( hit.next(),  Some( 0 ) );
@@ -160,7 +160,7 @@ use super::super::general::PeekUnqualified;
 ///
 /// This is one of many structs composed of a single element and a trailing iterator.  It's
 /// specialized for use in the [hit](crate::utilities::iterators::merge::hit) module, however.
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct HeadTailHit<I>
     where I: Iterator
 {
@@ -211,7 +211,9 @@ impl<I> Clone for HeadTailHit<I>
     where I: Iterator + Clone,
           I::Item: Clone
 {
-    clone_fields!(head, tail);
+    fn clone(&self) -> Self {
+        Self { head: self.head.clone(), tail: self.tail.clone() }
+    }
 }
 
 
@@ -258,7 +260,7 @@ impl<I> Clone for HeadTailHit<I>
 // }
 
 
-//  HitMerge object
+//  IteratorsMergedInSortedOrder object
 //  ---------------------------------------------------------------------------
 
 
@@ -267,42 +269,135 @@ impl<I> Clone for HeadTailHit<I>
 ///
 /// Iterator element type is `I::Item`.
 ///
-/// See [`hit_merge_by_fnmut`] for more information.
+/// See [hit_merge_by_fnmut] for more information.
 #[must_use = "iterator adaptors are lazy and do nothing unless consumed"]
-pub struct HitMerge<I, F>
+pub struct IteratorsMergedInSortedOrder<I, F>
     where I: Iterator,
 {
     heap: Vec<HeadTailHit<I>>,
     less_than: F,
 }
 
-impl <I, F>  HitMerge < I, F > 
+impl <I,F>
+    Clone for IteratorsMergedInSortedOrder<I, F>
+    where   I: Iterator + Clone,
+            I::Item: Clone, // this is required for HeadTailHit to implement Clone
+            F: Clone,
+{
+    fn clone(&self) -> Self {
+        IteratorsMergedInSortedOrder {
+            heap: self.heap.clone(),
+            less_than: self.less_than.clone(),
+        }
+    }
+}
+
+impl<I, F> fmt::Debug for IteratorsMergedInSortedOrder<I, F>
+where
+    I: Iterator + fmt::Debug,
+    I::Item: fmt::Debug,
+    F: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("IteratorsMergedInSortedOrder")
+            .field("heap", &self.heap)
+            .field("less_than", &self.less_than)
+            .finish()
+    }
+}
+
+impl <I,F>
+    PartialEq for IteratorsMergedInSortedOrder<I, F>
+    where   I: PartialEq + Iterator< Item: PartialEq >,
+            F: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        ( self.heap == other.heap ) & ( self.less_than == other.less_than )
+    }
+}
+impl <I,F>
+    Eq for IteratorsMergedInSortedOrder<I, F>
+    where   I: Eq + Iterator< Item: Eq >,
+            F: Eq,
+{}
+impl <I,F>
+    PartialOrd for IteratorsMergedInSortedOrder<I, F>
+    where   I: PartialOrd + Iterator< Item: PartialOrd >,
+            F: PartialOrd,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.heap.partial_cmp(&other.heap) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self.less_than.partial_cmp(&other.less_than)
+    }
+}
+impl <I,F>
+    Ord for IteratorsMergedInSortedOrder<I, F>
+    where   I: Ord + Iterator< Item: Ord >,
+            F: Ord,
+{
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.heap.cmp(&other.heap) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        self.less_than.cmp(&other.less_than)
+    }
+}
+
+impl <I, F>  IteratorsMergedInSortedOrder < I, F > 
     where 
         I: Iterator,
         F: JudgePartialOrder<  <I as IntoIterator>::Item >
 {    
-    /// Create an empty `HitMerge`.
-    pub fn new( less_than: F ) -> HitMerge< I, F > { HitMerge{ heap: Vec::new(), less_than } }
+    /// Creates an empty `IteratorsMergedInSortedOrder`.
+    /// 
+    /// # Examples
+    ///
+    /// ```
+    /// use oat_rust::utilities::iterators::merge::hit::IteratorsMergedInSortedOrder;
+    /// use oat_rust::utilities::order::OrderOperatorAuto;
+    /// 
+    /// // get a copy of an order operator that implements the standard order on integers
+    /// let order_operator = OrderOperatorAuto; 
+    /// 
+    /// // create an empty merge object
+    /// let mut merger = IteratorsMergedInSortedOrder::new(order_operator);
+    /// 
+    /// // insert new iterators in the merge object
+    /// merger.bulk_insert( vec![ vec![ 0, 2 ], vec![ 1, 3 ] ] );
+    /// 
+    /// // verify that entries from the iterators were merged correctly
+    /// assert!( 
+    ///     merger.eq( vec![0,1,2,3] )
+    /// );
+    /// ```
+    pub fn new( less_than: F ) -> IteratorsMergedInSortedOrder< I, F > 
+    { 
+        IteratorsMergedInSortedOrder{ heap: Vec::new(), less_than } 
+    }
 
     /// Returns `true` iff `self.next() = None`.
     /// 
-    /// For details, see the implementation of the `Iterator` trait for [`HitMerge`].
+    /// For details, see the implementation of the `Iterator` trait for [`IteratorsMergedInSortedOrder`].
     /// 
     /// ```
-    /// use oat_rust::utilities::iterators::merge::hit::{hit_merge_ascend};
+    /// use oat_rust::utilities::iterators::merge::hit::{hit_merge};
     /// 
     /// // Create a HIT iterator, and pop off some elements
-    /// let mut hit = hit_merge_ascend( vec![ vec![1, 2], vec![0, 3] ] );
+    /// let mut hit = hit_merge( vec![ vec![1, 2], vec![0, 3] ] );
     /// assert!( ! hit.is_empty() );
     /// for step in 0..4 { let _ = hit.next(); }
     /// assert!( hit.is_empty() );
     /// 
-    /// let mut hit = hit_merge_ascend( vec![ Vec::<usize>::new() ] );
+    /// let mut hit = hit_merge( vec![ Vec::<usize>::new() ] );
     /// assert!( hit.is_empty() );
     /// ```    
     pub fn is_empty( &self ) -> bool { self.heap.is_empty() }
 
-    /// Get the number of iterators in the heap.
+    /// Number of iterators in the heap.
     pub fn len( &self ) -> usize { self.heap.len() }
 
     /// Clears the heap, removing all iterators.
@@ -314,11 +409,11 @@ impl <I, F>  HitMerge < I, F >
     /// Append a new seqeunce of iterators to the merge heap.
     ///
     /// ```
-    /// use oat_rust::utilities::iterators::merge::hit::{hit_merge_ascend};
+    /// use oat_rust::utilities::iterators::merge::hit::{hit_merge};
     /// 
     /// // Create a HIT iterator, and pop off some elements
     /// let ordered_sequences = vec![ vec![1, 2], vec![0, 3] ];
-    /// let mut hit = hit_merge_ascend( ordered_sequences );
+    /// let mut hit = hit_merge( ordered_sequences );
     /// assert_eq!( Some(0), hit.next() );
     /// assert_eq!( Some(1), hit.next() );
     /// 
@@ -345,14 +440,14 @@ impl <I, F>  HitMerge < I, F >
         & tail_base);        
     }  
 
-    /// Append a new seqeunce of iterators to the merge heap.
+    /// Append one iterator to the merge heap.
     ///
     /// ```
-    /// use oat_rust::utilities::iterators::merge::hit::{hit_merge_ascend};
+    /// use oat_rust::utilities::iterators::merge::hit::{hit_merge};
     /// 
-    /// // Create a HIT iterator, and pop off some elements
+    /// // Create a HIT, and pop off some elements
     /// let ordered_sequences = vec![ vec![1, 3], vec![0, 4] ];
-    /// let mut hit = hit_merge_ascend( ordered_sequences );
+    /// let mut hit = hit_merge( ordered_sequences );
     /// assert_eq!( Some(0), hit.next() );
     /// assert_eq!( Some(1), hit.next() );
     /// 
@@ -373,23 +468,10 @@ impl <I, F>  HitMerge < I, F >
  
 }
 
-impl<I, F> fmt::Debug for HitMerge<I, F>
-    where I: Iterator + fmt::Debug,
-          I::Item: fmt::Debug,
-{
-    debug_fmt_fields!(HitMerge, heap);
-}
 
 
-impl<I, F> Clone for HitMerge<I, F>
-    where I: Iterator + Clone,
-          I::Item: Clone,
-          F: Clone,
-{
-    clone_fields!(heap, less_than);
-}
 
-impl<I, F> Iterator for HitMerge<I, F>
+impl<I, F> Iterator for IteratorsMergedInSortedOrder<I, F>
     where I: Iterator,
           F: JudgePartialOrder< I::Item>
 {
@@ -424,7 +506,7 @@ impl<I, F> Iterator for HitMerge<I, F>
     }  
 }      
 
-impl < I, F > PeekUnqualified for HitMerge< I, F > 
+impl < I, F > PeekUnqualified for IteratorsMergedInSortedOrder< I, F > 
         where I: Iterator,
         F: JudgePartialOrder< I::Item>,
 {
@@ -440,7 +522,7 @@ impl < I, F > PeekUnqualified for HitMerge< I, F >
 
 
 
-//  HitMerge makers
+//  IteratorsMergedInSortedOrder makers
 //  ---------------------------------------------------------------------------
 
 
@@ -454,7 +536,7 @@ impl < I, F > PeekUnqualified for HitMerge< I, F >
 /// the original reason for splitting it into two had to do with 
 /// engineering type constraints.
 pub fn hit_merge_by_predicate<I, F>(iterable: I, less_than: F)
-    -> HitMerge<<I::Item as IntoIterator>::IntoIter, F>
+    -> IteratorsMergedInSortedOrder<<I::Item as IntoIterator>::IntoIter, F>
     where I: IntoIterator,
           I::Item: IntoIterator,
           F: JudgePartialOrder< <<I as IntoIterator>::Item as IntoIterator>::Item>,
@@ -464,7 +546,7 @@ pub fn hit_merge_by_predicate<I, F>(iterable: I, less_than: F)
     let mut heap: Vec<_> = Vec::with_capacity(lower);
     heap.extend(iter.filter_map(|it| HeadTailHit::new(it.into_iter())));
     heapify(&mut heap, |a, b| less_than.judge_lt(&a.head, &b.head));
-    HitMerge { heap, less_than }
+    IteratorsMergedInSortedOrder { heap, less_than }
 }
 
 
@@ -487,7 +569,7 @@ pub fn hit_merge_by_predicate<I, F>(iterable: I, less_than: F)
 /// assert_eq!( y, vec![ 0, 1, -2, -3 ] )
 /// ```
 pub fn hit_merge_by_fnmut<I, F>(iter: I, less_than: F)
-    -> HitMerge<<I::Item as IntoIterator>::IntoIter, OrderOperatorByLessThan< F, <I::Item as IntoIterator>::Item > >
+    -> IteratorsMergedInSortedOrder<<I::Item as IntoIterator>::IntoIter, OrderOperatorByLessThan< F, <I::Item as IntoIterator>::Item > >
     where I: Sized + IntoIterator,
           I::Item: IntoIterator,
           F: Fn(&<I::Item as IntoIterator>::Item,
@@ -503,19 +585,19 @@ pub fn hit_merge_by_fnmut<I, F>(iter: I, less_than: F)
 /// if each iterator in the original sequence is sorted in ascending order.
 ///
 /// ```
-/// use oat_rust::utilities::iterators::merge::hit::hit_merge_ascend;
+/// use oat_rust::utilities::iterators::merge::hit::hit_merge;
 /// 
 /// // Result may not respect order if the input sequences do not.
 /// let data_unordered = vec![ vec![2, 0, 4]];
-/// let x : Vec<usize> = hit_merge_ascend( data_unordered ).collect();
+/// let x : Vec<usize> = hit_merge( data_unordered ).collect();
 /// assert_eq!( x, vec![ 2, 0, 4 ] );
 ///
 /// let data_ordered = vec![ vec![1, 2], vec![0, 3] ];
-/// let y : Vec<usize> = hit_merge_ascend( data_ordered ).collect();
+/// let y : Vec<usize> = hit_merge( data_ordered ).collect();
 /// assert_eq!( y, vec![ 0, 1, 2, 3 ] )
 /// ```
-pub fn hit_merge_ascend<I>(iterable: I) 
-    -> HitMerge<<I::Item as IntoIterator>::IntoIter, OrderOperatorAuto>
+pub fn hit_merge<I>(iterable: I) 
+    -> IteratorsMergedInSortedOrder<<I::Item as IntoIterator>::IntoIter, OrderOperatorAuto>
     
     where I: IntoIterator,
           I::Item: IntoIterator,
@@ -541,7 +623,7 @@ pub fn hit_merge_ascend<I>(iterable: I)
 /// assert_eq!( merged_ordered, vec![ 6, 5, 4, 3 ] )
 /// ```
 pub fn hit_merge_descend<I>(iterable: I) 
-    -> HitMerge<<I::Item as IntoIterator>::IntoIter, OrderOperatorAutoReverse>
+    -> IteratorsMergedInSortedOrder<<I::Item as IntoIterator>::IntoIter, OrderOperatorAutoReverse>
     
     where I: IntoIterator,
           I::Item: IntoIterator,
@@ -559,11 +641,11 @@ pub fn hit_merge_descend<I>(iterable: I)
 /// Append a new seqeunce of iterators to the merge heap.
 ///
 /// ```
-/// use oat_rust::utilities::iterators::merge::hit::{hit_merge_ascend, hit_bulk_insert};
+/// use oat_rust::utilities::iterators::merge::hit::{hit_merge, hit_bulk_insert};
 /// 
 /// // Create a HIT iterator, and pop off some elements
 /// let ordered_sequences = vec![ vec![1, 2], vec![0, 3] ];
-/// let mut hit = hit_merge_ascend( ordered_sequences );
+/// let mut hit = hit_merge( ordered_sequences );
 /// assert_eq!( Some(0), hit.next() );
 /// assert_eq!( Some(1), hit.next() );
 /// 
@@ -573,7 +655,7 @@ pub fn hit_merge_descend<I>(iterable: I)
 /// assert_eq!( vec, vec![ 2, 3, 4, 5, 6 ] )
 /// ```
 pub fn hit_bulk_insert< I, F >( 
-            merged : &mut HitMerge<<I::Item as IntoIterator>::IntoIter, F>, 
+            merged : &mut IteratorsMergedInSortedOrder<<I::Item as IntoIterator>::IntoIter, F>, 
             iterable: I,
         )
     where I: IntoIterator,
@@ -595,7 +677,7 @@ pub trait HitMergeByPredicateTrait{
     /// 
     /// Equivalent to [`hit_merge_by_predicate( self, less_than )`](hit_merge_by_predicate)
     fn hit_merge_by_predicate< F >( self, less_than: F)
-    -> HitMerge<<Self::Item as IntoIterator>::IntoIter, F>
+    -> IteratorsMergedInSortedOrder<<Self::Item as IntoIterator>::IntoIter, F>
     where Self: IntoIterator + Sized,
           Self::Item: IntoIterator,
           F: JudgePartialOrder< <<Self as IntoIterator>::Item as IntoIterator>::Item>
@@ -624,7 +706,7 @@ mod tests {
     use ordered_float::OrderedFloat;
 
     use super::*;
-    use crate::{utilities::{iterators::general::PeekUnqualified, order::OrderOperatorAuto}, algebra::rings::operator_structs::field_prime_order::{PrimeOrderFieldOperator}, algebra::vectors::operations::{VectorOperations}};    
+    use crate::{utilities::{iterators::general::PeekUnqualified, order::OrderOperatorAuto}, algebra::rings::types::field_prime_order::{PrimeOrderField}, algebra::vectors::operations::{VectorOperations}};    
 
     /// Verify that cloning works.
     #[test]
@@ -665,7 +747,7 @@ mod tests {
         let nvertices = 800;
         // let ordered_sequence: Vec<_> = (0..nvertices).map(|x| (  Simplex{ filvalue: OrderedFloat( x as f64 ), vertices: vec![x,x+1,x+2] }  ) ).collect();
 
-        let ring_operator   =   PrimeOrderFieldOperator::new(3);        
+        let ring_operator   =   PrimeOrderField::new(3);        
         let ordered_sequences: Vec< Vec< _ > > = vec![ 
                 (0..nvertices)
                     .map(

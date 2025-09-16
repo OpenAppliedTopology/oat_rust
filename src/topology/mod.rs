@@ -4,4 +4,3 @@
 // pub mod cycle_optimization;
 pub mod simplicial;
 pub mod point_cloud;
-pub mod homology;

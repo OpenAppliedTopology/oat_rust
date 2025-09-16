@@ -1,3 +1,0 @@
-//! How to start a Rust package
-//! 
-//! If you haven't created a package in Rust before, check out [introduction_to_rust](https://github.com/pnnl/introduction_to_rust_pnnl), a small Rust package that shows how to perform several common tasks, like starting a new package, building and viewing the documentation, and getting dependencies. The [Rust Book](https://doc.rust-lang.org/book/ch01-01-installation.html) is also an excellent reference.

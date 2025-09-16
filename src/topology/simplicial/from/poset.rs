@@ -6,7 +6,7 @@
 // use std::marker::PhantomData;
 
 // use itertools::Merge;
-// use crate::utilities::iterators::general::{IterTwoType, OnlyDuplicates};
+// use crate::utilities::iterators::general::{TwoTypeIterator, OnlyDuplicates};
 
 
 
@@ -120,7 +120,7 @@
 //     close_up:               UpwardClosureFn,
 //     close_dn:               DnwardClosureFn,
 //     insertion_locus:        usize,
-//     verts_to_insert:        IterTwoType<
+//     verts_to_insert:        TwoTypeIterator<
 //                                     OnlyDuplicates< Merge< ClosureIter > >,
 //                                     close_iter,
 //                                 >,
@@ -170,7 +170,7 @@
 //                 // in this case any vertex we insert has to be greater than the vertex that precedes it and less than the vertex that follows it
 //                 Less => { 
 //                     self.verts_to_insert = 
-//                         IterTwoType::Iter1(
+//                         TwoTypeIterator::Version1(
 //                             OnlyDuplicates::new(
 //                                 self.close_up( self.insertion_locus - 1 )
 //                                     .merge( self.close_dn( self.insertion_locus ) )
@@ -181,7 +181,7 @@
 //                 // in this case we are appending an element to the very end of the chain, so it only has to be greater than the last element of the chain              
 //                 Equal => { 
 //                     self.verts_to_insert = 
-//                         IterTwoType::Iter2(
+//                         TwoTypeIterator::Version2(
 //                             self.close_up( self.chain[ self.chain.len() -1 ] )
 //                         ); 
 //                 }

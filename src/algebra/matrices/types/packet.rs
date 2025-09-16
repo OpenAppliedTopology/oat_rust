@@ -1,674 +1,363 @@
 //! Wrapper for several pieces of data commonly used together with a matrix
 
 use derive_getters::Dissolve;
+use num::rational::Ratio;
 
-use crate::{algebra::{matrices::{query::{ViewRowAscend, IndicesAndCoefficients, ViewColDescend, MatrixOracle, MatrixAlgebra}, operations::multiply::{vector_matrix_multiply_major_ascend_simplified, vector_matrix_multiply_minor_descend_simplified}}, vectors::{entries::{KeyValGet, KeyValSet}, operations::LinearCombinationSimplified}, rings::operator_traits::Semiring}, utilities::order::{ReverseOrder, JudgePartialOrder}};
-
-use super::transpose::{Transpose, AntiTranspose};
+use crate::{algebra::{matrices::{operations::MatrixOracleOperations, query::{ MatrixAlgebra, MatrixOracle,}}, rings::{traits::SemiringOperations, types::{field_prime_order::BooleanField, native::{FieldFloat64, FieldRationalSize, RingOperatorForNativeRustNumberType}}}}, utilities::order::{JudgeOrder, OrderOperatorAuto, OrderOperatorByKey}};
 
 
 
 
 
 /// Wrapper for several pieces of data commonly used together with a matrix
-#[derive(Clone,Debug,Dissolve)]
+/// 
+/// The user-provided matrix must be compatible with the user-provided ring and order operators, as
+/// per the guidelines provided for the [MatrixAlgebra] trait. 
+/// **If these conditions are violated then any calculations performed with the [MatrixAlgebraPacket] may be incorrect.**
+/// **Moreover, it's possible that no errors or warnings will be generated. Therefore use this object with caution.**
+#[derive(Clone,Copy,Debug,Dissolve,Eq,PartialEq,Ord,PartialOrd)]
 pub struct MatrixAlgebraPacket
-                < Matrix, RingOperator, OrderOperatorRowEntriesRight, OrderOperatorColumnEntriesLeft > 
+                < Matrix, RingOperator, OrderOperatorForRowEntries, OrderOperatorForRowIndices, OrderOperatorForColumnEntries, OrderOperatorForColumnIndices, > 
 {
-    pub matrix:               Matrix,
-    pub ring:                 RingOperator,
-    pub row_entry_order:      OrderOperatorRowEntriesRight,
-    pub col_entry_order:      OrderOperatorColumnEntriesLeft,
+    pub matrix:                             Matrix,
+    pub ring_operator:                      RingOperator,
+    pub order_operator_for_row_entries:     OrderOperatorForRowEntries,
+    pub order_operator_for_row_indices:     OrderOperatorForRowIndices,    
+    pub order_operator_for_column_entries:  OrderOperatorForColumnEntries,
+    pub order_operator_for_column_indices:  OrderOperatorForColumnIndices,        
 }
 
-impl < Matrix, RingOperator, OrderOperatorRowEntriesRight, OrderOperatorColumnEntriesLeft >
+impl < Matrix, RingOperator, OrderOperatorForRowEntries, OrderOperatorForRowIndices, OrderOperatorForColumnEntries, OrderOperatorForColumnIndices, >
 
     MatrixAlgebraPacket
-        < Matrix, RingOperator, OrderOperatorRowEntriesRight, OrderOperatorColumnEntriesLeft >
+        < Matrix, RingOperator, OrderOperatorForRowEntries, OrderOperatorForRowIndices, OrderOperatorForColumnEntries, OrderOperatorForColumnIndices, >
 
-    // where
-    //     Matrix:                 Clone,
-    //     RingOperator:           Clone,
-    //     OrderOperatorRowEntriesRight:     Clone,
-    //     OrderOperatorColumnEntriesLeft:     Clone,        
+     
 {
     /// A reference to the matrix 
     pub fn matrix_ref(&self) -> & Matrix { & self.matrix }
-    /// A clone of the ring operator
-    pub fn ring(&self) -> RingOperator where RingOperator: Clone { self.ring.clone() }    
-    /// A clone of the order operator on row entries
-    pub fn row_entry_order(&self) -> OrderOperatorRowEntriesRight where OrderOperatorRowEntriesRight: Clone { self.row_entry_order.clone() }        
-    /// A clone of the order operator on column entries
-    pub fn col_entry_order(&self) -> OrderOperatorColumnEntriesLeft where OrderOperatorColumnEntriesLeft: Clone { self.col_entry_order.clone() }    
-
-    /// AntiTranspose the matrix
-    pub fn antitranspose( self )
-         ->     
-        MatrixAlgebraPacket
-                < AntiTranspose<Matrix>, RingOperator, ReverseOrder<OrderOperatorColumnEntriesLeft>, ReverseOrder<OrderOperatorRowEntriesRight>, >
-    {
-        MatrixAlgebraPacket { 
-            matrix: AntiTranspose::new(self.matrix), 
-            ring: self.ring, 
-            row_entry_order: ReverseOrder::new( self.col_entry_order ), 
-            col_entry_order: ReverseOrder::new( self.row_entry_order ),
-        }
-    }  
-
-    /// Transpose the matrix
-    pub fn transpose( self )
-         ->     
-        MatrixAlgebraPacket
-                < Transpose<Matrix>, RingOperator, OrderOperatorColumnEntriesLeft, OrderOperatorRowEntriesRight, >
-    {
-        MatrixAlgebraPacket { 
-            matrix: Transpose::new(self.matrix), 
-            ring: self.ring, 
-            row_entry_order: self.col_entry_order, 
-            col_entry_order: self.row_entry_order,
-        }
-    }
-
-
-    /// Left-multiplication with another matrix
-    /// 
-    /// Returns `self * other`
-    pub fn multiply_left< MatrixRight, OrderOperatorRowEntries2, OrderOperatorMinor2 >( 
-                self, 
-                other:  MatrixAlgebraPacket<
-                                MatrixRight,
-                                RingOperator,
-                                OrderOperatorRowEntries2,
-                                OrderOperatorMinor2,                                
-                            > 
-            )
-            ->
-            ProductPacketDEPRECATEFORNEWORACLEVERSION< Matrix, MatrixRight, RingOperator, OrderOperatorRowEntries2, OrderOperatorColumnEntriesLeft, >
-    {
-        ProductPacketDEPRECATEFORNEWORACLEVERSION{ 
-            matrix_left:        self.matrix,
-            matrix_right:        other.matrix,
-            ring:  self.ring,
-            row_entry_order:    other.row_entry_order,
-            col_entry_order:    self.col_entry_order,
-        }
-    }
-
-    /// Right-multiplication with another matrix
-    /// 
-    /// Returns `other * self`
-    pub fn multiply_right< MatrixRight, OrderOperatorRowEntries2, OrderOperatorMinor2 >( 
-                self, 
-                other:  MatrixAlgebraPacket<
-                                MatrixRight,
-                                RingOperator,
-                                OrderOperatorRowEntries2,
-                                OrderOperatorMinor2,                                
-                            > 
-            )
-            ->
-            ProductPacketDEPRECATEFORNEWORACLEVERSION< MatrixRight, Matrix, RingOperator, OrderOperatorRowEntriesRight, OrderOperatorMinor2, >
-    {
-        ProductPacketDEPRECATEFORNEWORACLEVERSION{ 
-            matrix_left:        other.matrix,
-            matrix_right:        self.matrix,
-            ring:  self.ring,
-            row_entry_order:    self.row_entry_order,
-            col_entry_order:    other.col_entry_order,
-        }
-    }    
-
-
-
-
 }
 
 
 
 
+//  SPECIALIZED IMPLEMENTATION FOR SIMPLE TYPES
 
-/// Product of two matrices
-/// 
-/// Unlike the [ProductMatrix](crate::algebra::matrices::operations::multiply::ProductMatrix) struct,
-/// this one contains enough information to return minor views.
-#[derive(Clone,Debug,Dissolve)]
-pub struct ProductPacketDEPRECATEFORNEWORACLEVERSION< 
-        MatrixLeft, 
-        MatrixRight, 
-        RingOperator,
-        OrderOperatorRowEntriesRight,
-        OrderOperatorColumnEntriesLeft,
-    > 
+
+impl < Matrix, RingOperator, >
+
+    MatrixAlgebraPacket
+        < 
+            Matrix, 
+            RingOperator, 
+            OrderOperatorByKey, // automatically compares entries by key
+            OrderOperatorAuto,  // compares indices using the default order
+            OrderOperatorByKey, // automatically compares entries by key
+            OrderOperatorAuto,  // compares indices using the default order
+        >
 {
-    pub matrix_left:        MatrixLeft,
-    pub matrix_right:       MatrixRight,
-    pub ring:               RingOperator,
-    pub row_entry_order:    OrderOperatorRowEntriesRight,
-    pub col_entry_order:    OrderOperatorColumnEntriesLeft,    
-    // packet1:    MatrixAlgebraPacket< MatrixLeft, RingOperator, OrderOperatorRowEntriesEntryMatrixL, OrderOperatorRowEntriesEntryMatrixR >,
-    // packet2:    MatrixAlgebraPacket< MatrixRight, RingOperator, OrderOperatorRowEntriesEntryMatrixR, OrderOperatorMinorEntryMatrixR >,
-}
-
-
-//  MATRIX ORACLE
-//  ---------------------------------------------------------------------------
-
-
-// impl  < 
-//         MatrixLeft, 
-//         MatrixRight, 
-//         RingOperator,
-//         OrderOperatorRowEntriesRight,
-//         OrderOperatorColumnEntriesLeft,
-//     > 
-
-//     MatrixOracle for
-    
-//     ProductPacketDEPRECATEFORNEWORACLEVERSION< 
-//         MatrixLeft, 
-//         MatrixRight, 
-//         RingOperator,
-//         OrderOperatorRowEntriesRight,
-//         OrderOperatorColumnEntriesLeft,
-//     >    
-//     where
-//         MatrixLeft:                    MatrixOracle,
-//         MatrixRight:                    MatrixOracle< Coefficient = MatrixLeft::Coefficient, RowIndex = MatrixLeft::ColumnIndex >, 
-//         MatrixRight::RowEntry:          KeyValSet < MatrixRight::ColumnIndex, MatrixRight::Coefficient >,  
-//         MatrixRight::ColumnIndex:       Clone + PartialEq, // PartialEq is required by the struct that simplifies sparse vector iterators; it has to be able to compare the indices of different entries
-//         MatrixRight::Coefficient:       Clone,                          
-//         RingOperator:               Clone + Semiring< MatrixLeft::Coefficient >,
-//         OrderOperatorRowEntriesRight:    Clone + JudgePartialOrder<  MatrixRight::RowEntry >,                 
-// {   
-
-//     type Coefficient            =   MatrixLeft::Coefficient;    // The type of coefficient stored in each entry of the matrix    
-//     type RowIndex               =   MatrixLeft::RowIndex; // The type key used to look up rows.  Matrices can have rows indexed by anything: integers, simplices, strings, etc.
-//     type ColumnIndex            =   MatrixRight::ColumnIndex; // The type of column indices    
-//     type RowEntry               =   MatrixRight::RowEntry;  // The type of entries in each row; these are essentially pairs of form `(column_index, coefficient)`
-//     type ColumnEntry            =   MatrixLeft::ColumnEntry;  // The type of entries in each column; these are essentially pairs of form `(row_index, coefficient)`
-//     type Row                    =   LinearCombinationSimplified
-//                                         < MatrixRight::RowIter, MatrixRight::ColumnIndex, MatrixRight::Coefficient, RingOperator, OrderOperatorRowEntriesRight >;
-//     type RowIter                =   LinearCombinationSimplified
-//                                         < MatrixRight::RowIter, MatrixRight::ColumnIndex, MatrixRight::Coefficient, RingOperator, OrderOperatorRowEntriesRight >;
-//     type RowReverse             =   LinearCombinationSimplified
-//                                         < MatrixRight::RowReverseIter, MatrixRight::ColumnIndex, MatrixRight::Coefficient, RingOperator, OrderOperatorRowEntriesRight >;
-//     type RowReverseIter         =   LinearCombinationSimplified
-//                                         < MatrixRight::RowReverseIter, MatrixRight::ColumnIndex, MatrixRight::Coefficient, RingOperator, OrderOperatorRowEntriesRight >;
-//     type Column                 =   LinearCombinationSimplified
-//                                         < MatrixLeft::ColumnIter, MatrixLeft::ColumnIndex, MatrixLeft::Coefficient, RingOperator, OrderOperatorColumnEntries >;
-//     type ColumnIter             =   LinearCombinationSimplified
-//                                         < MatrixLeft::ColumnIter, MatrixLeft::ColumnIndex, MatrixLeft::Coefficient, RingOperator, OrderOperatorColumnEntries >;
-//     type ColumnReverse          =   LinearCombinationSimplified
-//                                         < MatrixLeft::ColumnReverseIter, MatrixLeft::ColumnIndex, MatrixLeft::Coefficient, RingOperator, OrderOperatorColumnEntries >;
-//     type ColumnReverseIter      =   LinearCombinationSimplified
-//                                         < MatrixLeft::ColumnReverseIter, MatrixLeft::ColumnIndex, MatrixLeft::Coefficient, RingOperator, OrderOperatorColumnEntries >;
-
-
-//     fn entry(                   &   self, row: Self::RowIndex, column: Self::ColumnIndex ) ->  Option< Self::Coefficient > {
-//         println!("Add a test for this.");
-//         let mut return_value    =   None;
-//         for entry in self.matrix_left.row( row ) {
-//             let scale       =   entry.val();
-//             let row2        =   entry.key(); // pull out a row index
-//             let _       =   self.matrix_right
-//                                     .row( row2.clone() ) // look up the corresponding row
-//                                     .into_iter()
-//                                     .find(|x| x.key()==column ) // find an entry with the correct column
-//                                     .map(   
-//                                         |x| 
-//                                         {
-//                                             // multiply the entry in the correct column with the scalar by which we multiply the row
-//                                             let term    =   self.ring.multiply( scale, x.val() );  
-//                                             if let Some( sum ) = return_value {
-//                                                 // if our running some already has a nonzero entry, add the new term
-//                                                 return_value    =   Some(  self.ring.add( sum, term ) );
-//                                             } else {
-//                                                 // otherwise create the new term
-//                                                 return_value    =   Some( term );
-//                                             }
-//                                         }
-//                                     );
-//             return_value
-//         }
-//     }
-//     fn row(                     &   self, index: Self::RowIndex   )   -> Self::Row { 
-//         vector_matrix_multiply_major_ascend_simplified( 
-//             self.matrix_left.view_major_ascend( index ),
-//             & self.matrix_right,
-//             self.ring.clone(),
-//             self.row_entry_order.clone(),
-//         )
-//     }
-//     fn row_opt(                 &   self, index: Self::RowIndex   )   -> Option<Self::Row> {
-
-//     }   
-//     fn row_reverse(             &   self, index: Self::RowIndex   )   -> Self::RowReverse {
-//         vector_matrix_multiply_major_ascend_simplified( 
-//             self.matrix_left.view_major_ascend( index ),
-//             self.matrix_right.reverse_ref(),
-//             self.ring.clone(),
-//             self.row_entry_order.clone().reverse(),
-//         )        
-//     }
-//     fn row_reverse_opt(         &   self, index: Self::RowIndex   )   -> Option<Self::RowReverse>;    
-//     fn column(                  &   self, index: Self::ColumnIndex)   -> Self::Column              { self.column_opt(index).unwrap() }
-//     fn column_opt(              &   self, index: Self::ColumnIndex)   -> Option<Self::Column>;    
-//     fn column_reverse(          &   self, index: Self::ColumnIndex)   -> Self::ColumnReverse       { self.column_reverse_opt(index).unwrap() }            
-//     fn column_reverse_opt(      &   self, index: Self::ColumnIndex)   -> Option<Self::ColumnReverse>;    
-
-// } 
-
-
-//  INDICES AND COEFFICIENTS
-//  ---------------------------------------------------------------------------
-impl  < 
-        MatrixLeft, 
-        MatrixRight, 
-        RingOperator,
-        OrderOperatorRowEntriesRight,
-        OrderOperatorColumnEntriesLeft,
-    > 
-
-    IndicesAndCoefficients for
-    
-    ProductPacketDEPRECATEFORNEWORACLEVERSION< 
-        MatrixLeft, 
-        MatrixRight, 
-        RingOperator,
-        OrderOperatorRowEntriesRight,
-        OrderOperatorColumnEntriesLeft,
-    >    
-    where
-        MatrixLeft:                            IndicesAndCoefficients,
-        MatrixRight:                            IndicesAndCoefficients< Coefficient = MatrixLeft::Coefficient >,
-{   
-    type Coefficient = MatrixLeft::Coefficient;
-    type EntryMajor = MatrixRight::EntryMajor;
-    type EntryMinor = MatrixLeft::EntryMinor;
-    type RowIndex = MatrixLeft::RowIndex;
-    type ColIndex = MatrixRight::ColIndex;
-}
-
-
-
-
-// ViewRowAscend
-impl  < 
-        MatrixLeft, 
-        MatrixRight, 
-        RingOperator,
-        OrderOperatorRowEntriesRight,
-        OrderOperatorColumnEntriesLeft,
-    > 
-
-    ViewRowAscend for
-    
-    ProductPacketDEPRECATEFORNEWORACLEVERSION< 
-        MatrixLeft, 
-        MatrixRight, 
-        RingOperator,
-        OrderOperatorRowEntriesRight,
-        OrderOperatorColumnEntriesLeft,      
-    >    
-    where
-        MatrixLeft:                            ViewRowAscend + IndicesAndCoefficients,
-        MatrixRight:                            ViewRowAscend + IndicesAndCoefficients< Coefficient = MatrixLeft::Coefficient, RowIndex = MatrixLeft::ColIndex >, 
-        MatrixLeft::ViewMajorAscend:           IntoIterator,
-        MatrixRight::ViewMajorAscend:           IntoIterator,
-        MatrixLeft::EntryMajor:                KeyValGet < MatrixLeft::ColIndex, MatrixLeft::Coefficient >,
-        MatrixRight::EntryMajor:                KeyValGet < MatrixRight::ColIndex, MatrixRight::Coefficient > + KeyValSet < MatrixRight::ColIndex, MatrixRight::Coefficient >,  
-        MatrixRight::ColIndex:                  Clone + PartialEq, // PartialEq is required by the struct that simplifies sparse vector iterators; it has to be able to compare the indices of different entries
-        MatrixRight::Coefficient:              Clone,                          
-        RingOperator:                       Clone + Semiring< MatrixLeft::Coefficient >,
-        OrderOperatorRowEntriesRight:             Clone + JudgePartialOrder<  MatrixRight::EntryMajor >,                 
-
-{   
-    type ViewMajorAscend            =   LinearCombinationSimplified
-                                            < MatrixRight::ViewMajorAscendIntoIter, MatrixRight::ColIndex, MatrixRight::Coefficient, RingOperator, OrderOperatorRowEntriesRight >;
-    type ViewMajorAscendIntoIter    =   Self::ViewMajorAscend;
-
-    fn view_major_ascend( & self, index: Self::RowIndex ) 
-        -> 
-        LinearCombinationSimplified
-            < MatrixRight::ViewMajorAscendIntoIter, MatrixRight::ColIndex, MatrixRight::Coefficient, RingOperator, OrderOperatorRowEntriesRight >
-    {
-        vector_matrix_multiply_major_ascend_simplified( 
-                self.matrix_left.view_major_ascend( index ),
-                & self.matrix_right,
-                self.ring.clone(),
-                self.row_entry_order.clone(),
-            )   
+    /// Wraps `matrix` in a [`MatrixAlgebraPacket`]
+    /// 
+    /// This method is only available for matrices whose row and column indices implement [PartialOrd]. The constructor will assign the order from
+    /// `PartialOrd` to the row and column entries and indices. The user specifies the ring operator.
+    pub fn with_default_order( matrix: Matrix, ring_operator: RingOperator ) -> Self { 
+        MatrixAlgebraPacket{
+            matrix,
+            ring_operator,
+            order_operator_for_row_entries: OrderOperatorByKey::new(),
+            order_operator_for_row_indices: OrderOperatorAuto,
+            order_operator_for_column_entries: OrderOperatorByKey::new(),
+            order_operator_for_column_indices: OrderOperatorAuto,          
+        }
     }
 }
 
 
-// ViewColDescend
-impl  < 
-        MatrixLeft, 
-        MatrixRight, 
-        RingOperator,
-        OrderOperatorRowEntriesRight,
-        OrderOperatorColumnEntriesLeft,
-    > 
+impl < Matrix >
 
-    ViewColDescend for
-    
-    ProductPacketDEPRECATEFORNEWORACLEVERSION< 
-        MatrixLeft, 
-        MatrixRight, 
-        RingOperator,
-        OrderOperatorRowEntriesRight,
-        OrderOperatorColumnEntriesLeft,      
-    >    
+    MatrixAlgebraPacket
+        < 
+            Matrix, 
+            BooleanField, 
+            OrderOperatorByKey, // automatically compares entries by key
+            OrderOperatorAuto,  // compares indices using the default order
+            OrderOperatorByKey, // automatically compares entries by key
+            OrderOperatorAuto,  // compares indices using the default order
+        >
     where
-        MatrixLeft:                            ViewColDescend + IndicesAndCoefficients,
-        MatrixRight:                            ViewColDescend + IndicesAndCoefficients< Coefficient = MatrixLeft::Coefficient, RowIndex = MatrixLeft::ColIndex, >, 
-        MatrixLeft::ViewMinorDescend:          IntoIterator,
-        MatrixRight::ViewMinorDescend:          IntoIterator,
-        MatrixLeft::EntryMinor:                KeyValGet < MatrixLeft::RowIndex, MatrixLeft::Coefficient > + KeyValSet < MatrixLeft::RowIndex, MatrixLeft::Coefficient >,
-        MatrixRight::EntryMinor:                KeyValGet < MatrixRight::RowIndex, MatrixRight::Coefficient >,  
-        MatrixLeft::RowIndex:                  Clone + PartialEq, // PartialEq is required by the struct that simplifies sparse vector iterators; it has to be able to compare the indices of different entries
-        MatrixRight::Coefficient:              Clone,                          
-        RingOperator:                       Clone + Semiring< MatrixLeft::Coefficient >,
-        OrderOperatorColumnEntriesLeft:             Clone + JudgePartialOrder<  MatrixLeft::EntryMinor >,                 
-
-{   
-    type ViewMinorDescend           =   LinearCombinationSimplified< 
-                                                MatrixLeft::ViewMinorDescendIntoIter, 
-                                                MatrixLeft::RowIndex, 
-                                                MatrixLeft::Coefficient, 
-                                                RingOperator, 
-                                                ReverseOrder< OrderOperatorColumnEntriesLeft >,
-                                            >;
-    type ViewMinorDescendIntoIter   =   Self::ViewMinorDescend;
-
-    fn view_minor_descend( & self, index: MatrixRight::ColIndex ) 
-        -> 
-        LinearCombinationSimplified< 
-                MatrixLeft::ViewMinorDescendIntoIter, 
-                MatrixLeft::RowIndex, 
-                MatrixLeft::Coefficient, 
-                RingOperator, 
-                ReverseOrder< OrderOperatorColumnEntriesLeft >,
-            >
-    {
-        vector_matrix_multiply_minor_descend_simplified( 
-                self.matrix_right.view_minor_descend( index ),
-                & self.matrix_left,
-                self.ring.clone(),
-                self.col_entry_order.clone(),
-            )   
-    }
-}
-
-
-
-
-
-// /// Product of two matrices
-// /// 
-// /// Unlike the [ProductMatrix](crate::algebra::matrices::operations::multiply::ProductMatrix) struct,
-// /// this one contains enough information to return minor views.
-// #[derive(Clone,Debug,Dissolve)]
-// pub struct ProductPacketDEPRECATEFORNEWORACLEVERSION< 
-//         MatrixLeft,
-//         MatrixRight,
-//         RingOperator,
-//         OrderOperatorRowEntriesLeft,
-//         OrderOperatorRowEntriesRight,
-//         OrderOperatorColumnEntriesLeft,
-//         OrderOperatorColumnEntriesLeft,                  
-//     > 
-// {
-//     pub matrix_left:        MatrixLeft,
-//     pub matrix_right:       MatrixRight,
-//     pub ring:               RingOperator,
-//     pub row_entry_order:    OrderOperatorRowEntriesRight,
-//     pub col_entry_order:    OrderOperatorColumnEntriesLeft,    
-//     // packet1:    MatrixAlgebraPacket< MatrixLeft, RingOperator, OrderOperatorRowEntriesEntryMatrixL, OrderOperatorRowEntriesEntryMatrixR >,
-//     // packet2:    MatrixAlgebraPacket< MatrixRight, RingOperator, OrderOperatorRowEntriesEntryMatrixR, OrderOperatorMinorEntryMatrixR >,
-// }
-
-
-// // Matrix Oracle
-// impl  < 
-//         MatrixLeft, 
-//         MatrixRight, 
-//         RingOperator,
-//         OrderOperatorColumnEntriesLeft,
-//         OrderOperatorRowEntriesRight,        
-//     > 
-
-//     MatrixOracle for
-    
-//     ProductPacket< 
-//         MatrixLeft, 
-//         MatrixRight, 
-//         RingOperator,
-//         OrderOperatorRowEntriesLeft,         
-//         OrderOperatorColumnEntriesLeft,      
-//         OrderOperatorRowEntriesRight,                
-//     >    
-//     where
-//         MatrixLeft:                         MatrixOracle,
-//         MatrixRight:                        MatrixOracle< 
-//                                                 Coefficient     =   MatrixLeft::Coefficient, 
-//                                                 RowIndex        =   MatrixLeft::ColumnIndex, 
-//                                             >, 
-//         // MatrixLeft::EntryMinor:                KeyValGet < MatrixLeft::RowIndex, MatrixLeft::Coefficient > + KeyValSet < MatrixLeft::RowIndex, MatrixLeft::Coefficient >,
-//         // MatrixRight::EntryMinor:                KeyValGet < MatrixRight::RowIndex, MatrixRight::Coefficient >,  
-//         MatrixLeft::RowIndex:               Clone + PartialEq, // PartialEq is required by the struct that simplifies sparse vector iterators; it has to be able to compare the indices of different entries
-//         MatrixLeft::Coefficient:            Clone,                          
-//         RingOperator:                       Clone + Semiring< MatrixLeft::Coefficient >,
-//         OrderOperatorColumnEntriesLeft:     Clone + JudgePartialOrder<  MatrixLeft::ColumnEntry >,
-
-// {   
-
-//     // type Row:               // What you get when you ask for a row.
-//     //                         IntoIterator<   Item    =   Self::RowEntry,     IntoIter    =   Self::RowIter           >;
-//     // type RowIter:           // What you get when you call `row.into_iter()`, where `row` is a row
-//     //                         Iterator<       Item    =   Self::RowEntry                                              >;
-//     // type RowReverse:        // What you get when you ask for a row with the order of entries reversed
-//     //                         IntoIterator<   Item    =   Self::RowEntry,     IntoIter    =   Self::RowReverseIter    >;
-//     // type RowReverseIter:    // What you get when you call `row_reverse.into_iter()`, where `row_reverse` is a reversed row (which is a row with order of entries reversed)
-//     //                         Iterator<       Item    =  Self::RowEntry                                               >;
-//     // type Column:            // What you get when you ask for a column
-//     //                         IntoIterator<   Item    =   Self::ColumnEntry,  IntoIter    =   Self::ColumnIter        >;
-//     // type ColumnIter:        // What you get when you call `column.into_iter()`, where `column` is a column
-//     //                         Iterator<       Item    =   Self::ColumnEntry                                           >;
-//     // type ColumnReverse:     // What you get when you ask for a column with the order of entries reversed                             
-//     //                         IntoIterator<   Item    =   Self::ColumnEntry,  IntoIter    =   Self::ColumnReverseIter >;  
-//     // type ColumnReverseIter: // What you get when you call `column_reverse.into_iter()`, where `column_reverse` is a reversed column (which is a column with order of entries reversed)
-//     //                         Iterator<       Item    =   Self::ColumnEntry                                           >;
-
-//     type Coefficient            =   MatrixLeft::Coefficient;// The type of coefficient stored in each entry of the matrix    
-//     type RowIndex               =   MatrixLeft::RowIndex;// The type key used to look up rows.  Matrices can have rows indexed by anything: integers, simplices, strings, etc.
-//     type RowEntry               =   MatrixRight::RowEntry;// The type of entries in each row; these are essentially pairs of form `(column_index, coefficient)`
-//     type ColumnIndex            =   MatrixRight::ColumnIndex;// The type of column indices    
-//     type ColumnEntry            =   MatrixLeft::ColEntry;// The type of entries in each column; these are essentially pairs of form `(row_index, coefficient)`
-//     type Row                    =   LinearCombinationSimplified< 
-//                                         MatrixRight::Row, 
-//                                         MatrixRight::ColumnIndex, 
-//                                         MatrixRight::Coefficient, 
-//                                         RingOperator, 
-//                                         OrderOperatorRowEntriesRight,
-//                                     >; // What you get when you ask for a row.
-//     type RowIter                =   Self::Row; // What you get when you call `row.into_iter()`, where `row` is a row
-//     type RowReverse             =   LinearCombinationSimplified< 
-//                                         MatrixRight::RowReverse, 
-//                                         MatrixRight::ColumnIndex, 
-//                                         MatrixRight::Coefficient, 
-//                                         RingOperator, 
-//                                         ReverseOrder< OrderOperatorRowEntriesRight >,
-//                                     >; // What you get when you ask for a row with the order of entries reversed
-//     type RowReverseIter         =   Self::RowReverse; // What you get when you call `row_reverse.into_iter()`, where `row_reverse` is a reversed row (which is a row with order of entries reversed)
-//     type Column                 =   LinearCombinationSimplified< 
-//                                         MatrixLeft::Column, 
-//                                         MatrixLeft::RowIndex, 
-//                                         MatrixLeft::Coefficient, 
-//                                         RingOperator, 
-//                                         OrderOperatorColumnEntriesLeft,
-//                                     >; // What you get when you ask for a column
-//     type ColumnIter             =   Self::Column; // What you get when you call `column.into_iter()`, where `column` is a column
-//     type ColumnReverse          =   LinearCombinationSimplified< 
-//                                         MatrixLeft::ColumnReverse, 
-//                                         MatrixLeft::RowIndex, 
-//                                         MatrixLeft::Coefficient, 
-//                                         RingOperator, 
-//                                         ReverseOrder< OrderOperatorColumnEntriesLeft >,
-//                                     >;// What you get when you ask for a column with the order of entries reversed                             
-//     type ColumnReverseIter      =   Self::ColumnReverse; // What you get when you call `column_reverse.into_iter()`, where `column_reverse` is a reversed column (which is a column with order of entries reversed)
-
-//     fn entry(                   &   self, row: Self::RowIndex, column: Self::ColumnIndex ) ->  Option< Self::Coefficient >;
-//     fn row(                     &   self, index: Self::RowIndex   )   -> Self::Row                 { self.row_opt(index).unwrap() }
-//     fn row_opt(                 &   self, index: Self::RowIndex   )   -> Option<Self::Row>;    
-//     fn row_reverse(             &   self, index: Self::RowIndex   )   -> Self::RowReverse          { self.row_reverse_opt(index).unwrap() }    
-//     fn row_reverse_opt(         &   self, index: Self::RowIndex   )   -> Option<Self::RowReverse>;    
-//     fn column(                  &   self, index: Self::ColumnIndex)   -> Self::Column              { self.column_opt(index).unwrap() }
-//     fn column_opt(              &   self, index: Self::ColumnIndex)   -> Option<Self::Column>;    
-//     fn column_reverse(          &   self, index: Self::ColumnIndex)   -> Self::ColumnReverse       { self.column_reverse_opt(index).unwrap() }            
-//     fn column_reverse_opt(      &   self, index: Self::ColumnIndex)   -> Option<Self::ColumnReverse>;    
-
-// } 
-
-
-
-// /// Product of two matrices
-// /// 
-// /// Unlike the [ProductMatrix](crate::algebra::matrices::operations::multiply::ProductMatrix) struct,
-// /// this one contains enough information to return minor views.
-// #[derive(Clone,Debug,Dissolve)]
-// pub struct ProductPacketDEPRECATEFORNEWORACLEVERSION< 
-//         MatrixLeft,
-//         MatrixRight,
-//         RingOperator,
-//         OrderOperatorRowEntriesLeft,
-//         OrderOperatorRowEntriesRight,
-//         OrderOperatorColumnEntriesLeft,
-//         OrderOperatorColumnEntriesLeft,                  
-//     > 
-// {
-//     pub matrix_left:        MatrixLeft,
-//     pub matrix_right:       MatrixRight,
-//     pub ring:               RingOperator,
-//     pub row_entry_order:    OrderOperatorRowEntriesRight,
-//     pub col_entry_order:    OrderOperatorColumnEntriesLeft,    
-//     // packet1:    MatrixAlgebraPacket< MatrixLeft, RingOperator, OrderOperatorRowEntriesEntryMatrixL, OrderOperatorRowEntriesEntryMatrixR >,
-//     // packet2:    MatrixAlgebraPacket< MatrixRight, RingOperator, OrderOperatorRowEntriesEntryMatrixR, OrderOperatorMinorEntryMatrixR >,
-// }
-
-
-
-
-/// Product of two matrices
-/// 
-/// Unlike the [ProductMatrix](crate::algebra::matrices::operations::multiply::ProductMatrix) struct,
-/// this one contains enough information to return minor views.
-#[derive(Clone,Debug,Dissolve)]
-pub struct ProductMatrix< 
-        MatrixLeft,
-        MatrixRight,                 
-    > 
+        Matrix:         MatrixOracle< 
+                            Coefficient         =   bool,
+                            RowIndex:               PartialOrd,
+                            ColumnIndex:            PartialOrd,
+                        >,   
 {
-    pub matrix_left:        MatrixLeft,
-    pub matrix_right:       MatrixRight,
+    /// Wraps the input `matrix`  with boolean coefficients in a [`MatrixAlgebraPacket`]
+    /// 
+    /// This method is only available for matrices whose row and column indices implement [PartialOrd]. The constructor will assign the order from
+    /// `PartialOrd` to the row and column entries and indices. The packets' ring operator will be [`BooleanField`]    
+    pub fn with_default_order_and_boolean_coefficients( matrix: Matrix ) -> Self { 
+        MatrixAlgebraPacket{
+            matrix,
+            ring_operator: BooleanField::new(),
+            order_operator_for_row_entries: OrderOperatorByKey::new(),
+            order_operator_for_row_indices: OrderOperatorAuto,
+            order_operator_for_column_entries: OrderOperatorByKey::new(),
+            order_operator_for_column_indices: OrderOperatorAuto,          
+        }
+    }
 }
 
 
-// // Matrix Oracle
-// impl  < 
-//         MatrixLeft, 
-//         MatrixRight,       
-//     > 
 
-//     MatrixOracle for
+
+impl < Matrix >
+
+    MatrixAlgebraPacket
+        < 
+            Matrix, 
+            RingOperatorForNativeRustNumberType<i64>, 
+            OrderOperatorByKey, // automatically compares entries by key
+            OrderOperatorAuto,  // compares indices using the default order
+            OrderOperatorByKey, // automatically compares entries by key
+            OrderOperatorAuto,  // compares indices using the default order
+        >
+    where
+        Matrix:         MatrixOracle< 
+                            Coefficient         =   i64,
+                            RowIndex:               PartialOrd,
+                            ColumnIndex:            PartialOrd,
+                        >,   
+{
+    /// Wraps the input `matrix`  with integer `i64` coefficients in a [`MatrixAlgebraPacket`]
+    /// 
+    /// This method is only available for matrices whose row and column indices implement [PartialOrd]. The constructor will assign the order from
+    /// `PartialOrd` to the row and column entries and indices. The packets' ring operator will be [`BooleanField`]    
+    pub fn with_default_order_and_i64_coefficients( matrix: Matrix ) -> Self { 
+        MatrixAlgebraPacket{
+            matrix,
+            ring_operator: RingOperatorForNativeRustNumberType::<i64>::new(),
+            order_operator_for_row_entries: OrderOperatorByKey::new(),
+            order_operator_for_row_indices: OrderOperatorAuto,
+            order_operator_for_column_entries: OrderOperatorByKey::new(),
+            order_operator_for_column_indices: OrderOperatorAuto,          
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+impl < Matrix >
+
+    MatrixAlgebraPacket
+        < 
+            Matrix, 
+            RingOperatorForNativeRustNumberType<usize>, 
+            OrderOperatorByKey, // automatically compares entries by key
+            OrderOperatorAuto,  // compares indices using the default order
+            OrderOperatorByKey, // automatically compares entries by key
+            OrderOperatorAuto,  // compares indices using the default order
+        >
+    where
+        Matrix:         MatrixOracle< 
+                            Coefficient         =   i64,
+                            RowIndex:               PartialOrd,
+                            ColumnIndex:            PartialOrd,
+                        >,   
+{
+    /// Wraps the input `matrix`  with integer `usize` coefficients in a [`MatrixAlgebraPacket`]
+    /// 
+    /// This method is only available for matrices whose row and column indices implement [PartialOrd]. The constructor will assign the order from
+    /// `PartialOrd` to the row and column entries and indices. The packets' ring operator will be [`BooleanField`]    
+    pub fn with_default_order_and_usize_coefficients( matrix: Matrix ) -> Self { 
+        MatrixAlgebraPacket{
+            matrix,
+            ring_operator: RingOperatorForNativeRustNumberType::<usize>::new(),
+            order_operator_for_row_entries: OrderOperatorByKey::new(),
+            order_operator_for_row_indices: OrderOperatorAuto,
+            order_operator_for_column_entries: OrderOperatorByKey::new(),
+            order_operator_for_column_indices: OrderOperatorAuto,          
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+impl < Matrix, >
+
+    MatrixAlgebraPacket
+        < 
+            Matrix, 
+            FieldRationalSize, 
+            OrderOperatorByKey, // automatically compares entries by key
+            OrderOperatorAuto,  // compares indices using the default order
+            OrderOperatorByKey, // automatically compares entries by key
+            OrderOperatorAuto,  // compares indices using the default order
+        >
+    where
+        Matrix:         MatrixOracle< 
+                            Coefficient         =   Ratio< isize >,
+                            RowIndex:               PartialOrd,
+                            ColumnIndex:            PartialOrd,
+                        >,                  
+{
+    /// Wraps `matrix`  with rational coefficients in a [`MatrixAlgebraPacket`]
+    /// 
+    /// This method is only available for matrices whose row and column indices implement [PartialOrd]. The constructor will assign the order from
+    /// `PartialOrd` to the row and column entries and indices. The packets' ring operator will be [`FieldRationalSize`]
+    pub fn with_default_order_and_rational_coefficients( matrix: Matrix ) -> Self { 
+        MatrixAlgebraPacket{
+            matrix,
+            ring_operator: FieldRationalSize::new(),
+            order_operator_for_row_entries: OrderOperatorByKey::new(),
+            order_operator_for_row_indices: OrderOperatorAuto,
+            order_operator_for_column_entries: OrderOperatorByKey::new(),
+            order_operator_for_column_indices: OrderOperatorAuto,          
+        }
+    }
+}
+
+
+impl < Matrix, >
+
+    MatrixAlgebraPacket
+        < 
+            Matrix, 
+            FieldFloat64, 
+            OrderOperatorByKey, // automatically compares entries by key
+            OrderOperatorAuto,  // compares indices using the default order
+            OrderOperatorByKey, // automatically compares entries by key
+            OrderOperatorAuto,  // compares indices using the default order
+        >
+    where
+        Matrix:         MatrixOracle< 
+                            Coefficient         =   f64,
+                            RowIndex:               PartialOrd,
+                            ColumnIndex:            PartialOrd,
+                        >,                     
+{
+    /// Wraps `matrix`  with rational coefficients in a [`MatrixAlgebraPacket`]
+    /// 
+    /// This method is only available for matrices whose row and column indices implement [PartialOrd]. The constructor will assign the order from
+    /// `PartialOrd` to the row and column entries and indices. The packets' ring operator will be [`FieldRationalSize`]
+    pub fn with_default_order_and_f64_coefficients( matrix: Matrix ) -> Self { 
+        MatrixAlgebraPacket{
+            matrix,
+            ring_operator: FieldFloat64::new(),
+            order_operator_for_row_entries: OrderOperatorByKey::new(),
+            order_operator_for_row_indices: OrderOperatorAuto,
+            order_operator_for_column_entries: OrderOperatorByKey::new(),
+            order_operator_for_column_indices: OrderOperatorAuto,          
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+impl < Matrix, RingOperator, OrderOperatorForRowEntries, OrderOperatorForRowIndices, OrderOperatorForColumnEntries, OrderOperatorForColumnIndices, > 
+
+    MatrixOracle for
+
+    MatrixAlgebraPacket
+        < Matrix, RingOperator, OrderOperatorForRowEntries, OrderOperatorForRowIndices, OrderOperatorForColumnEntries, OrderOperatorForColumnIndices, > 
+
+    where 
+        Matrix:                         MatrixOracle,
+
+{
     
-//     ProductPacket< 
-//         MatrixLeft, 
-//         MatrixRight,               
-//     >    
-//     where
-//         MatrixLeft:                         MatrixOracle + MatrixAlgebra,
-//         MatrixRight:                        MatrixOracle< 
-//                                                 Coefficient         =   MatrixLeft::Coefficient, 
-//                                                 RowIndex            =   MatrixLeft::ColumnIndex,                                              
-//                                             > +
-//                                             MatrixAlgebra<
-//                                                 RingOperator        =   MatrixLeft::RingOperator,
-//                                                 ColumnEntryOrder    =   MatrixLeft::RowEntryOrder,
-//                                             >, 
-//         // MatrixLeft::EntryMinor:                KeyValGet < MatrixLeft::RowIndex, MatrixLeft::Coefficient > + KeyValSet < MatrixLeft::RowIndex, MatrixLeft::Coefficient >,
-//         // MatrixRight::EntryMinor:                KeyValGet < MatrixRight::RowIndex, MatrixRight::Coefficient >,  
-//         MatrixLeft::RowIndex:               Clone + PartialEq, // PartialEq is required by the struct that simplifies sparse vector iterators; it has to be able to compare the indices of different entries
-//         MatrixLeft::Coefficient:            Clone,                          
-//         RingOperator:                       Clone + Semiring< MatrixLeft::Coefficient >,
-//         OrderOperatorColumnEntriesLeft:     Clone + JudgePartialOrder<  MatrixLeft::ColumnEntry >,
+    type Coefficient            =   Matrix::Coefficient  ;    // The type of coefficient stored in each entry of the matrix    
+    type RowIndex               =   Matrix::RowIndex     ;    // The type key used to look up rows.  Matrices can have rows indexed by anything: integers, simplices, strings, etc.
+    type ColumnIndex            =   Matrix::ColumnIndex  ;    // The type of column indices    
+    type RowEntry               =   Matrix::RowEntry     ;  // The type of entries in each row; these are essentially pairs of form `(column_index, coefficient)`
+    type ColumnEntry            =   Matrix::ColumnEntry  ;  // The type of entries in each column; these are essentially pairs of form `(row_index, coefficient)`
+    type Row                    =   Matrix::Row          ;  // What you get when you ask for a row.
+    type RowReverse             =   Matrix::RowReverse   ;  // What you get when you ask for a row with the order of entries reversed
+    type Column                 =   Matrix::Column       ;  // What you get when you ask for a column
+    type ColumnReverse          =   Matrix::ColumnReverse;  // What you get when you ask for a column with the order of entries reversed                             
 
-// {   
+    /// Should return `Some(x)` as long as the row and column indices are valid.
+    fn structural_nonzero_entry(                   &   self, row:   &Self::RowIndex, column: &Self::ColumnIndex ) ->  Option< Self::Coefficient >  { self.matrix.structural_nonzero_entry(row,column) }
+    fn has_column_for_index(  &   self, index: &Self::ColumnIndex)    -> bool                         { self.matrix.has_column_for_index(index) }
+    fn has_row_for_index(     &   self, index: &Self::RowIndex)       -> bool                         { self.matrix.has_row_for_index(index) }    
+    fn row(                     &   self, index: &Self::RowIndex   )    -> Self::Row                    { self.matrix.row( index )                }
+    fn row_result(                 &   self, index: &Self::RowIndex   )    -> Result< Self::Row, Self::RowIndex >            { self.matrix.row_result( index )            }
+    fn row_reverse(             &   self, index: &Self::RowIndex   )    -> Self::RowReverse             { self.matrix.row_reverse( index )        }
+    fn row_reverse_result(         &   self, index: &Self::RowIndex   )    -> Result< Self::RowReverse, Self::RowIndex >     { self.matrix.row_reverse_result( index )    }
+    fn column(                  &   self, index: &Self::ColumnIndex)    -> Self::Column                 { self.matrix.column( index )             }
+    fn column_result(              &   self, index: &Self::ColumnIndex)    -> Result< Self::Column, Self::ColumnIndex >         { self.matrix.column_result( index )         }
+    fn column_reverse(          &   self, index: &Self::ColumnIndex)    -> Self::ColumnReverse          { self.matrix.column_reverse( index )     }
+    fn column_reverse_result(      &   self, index: &Self::ColumnIndex)    -> Result< Self::ColumnReverse, Self::ColumnIndex >  { self.matrix.column_reverse_result( index ) }
 
-//     // type Row:               // What you get when you ask for a row.
-//     //                         IntoIterator<   Item    =   Self::RowEntry,     IntoIter    =   Self::RowIter           >;
-//     // type RowIter:           // What you get when you call `row.into_iter()`, where `row` is a row
-//     //                         Iterator<       Item    =   Self::RowEntry                                              >;
-//     // type RowReverse:        // What you get when you ask for a row with the order of entries reversed
-//     //                         IntoIterator<   Item    =   Self::RowEntry,     IntoIter    =   Self::RowReverseIter    >;
-//     // type RowReverseIter:    // What you get when you call `row_reverse.into_iter()`, where `row_reverse` is a reversed row (which is a row with order of entries reversed)
-//     //                         Iterator<       Item    =  Self::RowEntry                                               >;
-//     // type Column:            // What you get when you ask for a column
-//     //                         IntoIterator<   Item    =   Self::ColumnEntry,  IntoIter    =   Self::ColumnIter        >;
-//     // type ColumnIter:        // What you get when you call `column.into_iter()`, where `column` is a column
-//     //                         Iterator<       Item    =   Self::ColumnEntry                                           >;
-//     // type ColumnReverse:     // What you get when you ask for a column with the order of entries reversed                             
-//     //                         IntoIterator<   Item    =   Self::ColumnEntry,  IntoIter    =   Self::ColumnReverseIter >;  
-//     // type ColumnReverseIter: // What you get when you call `column_reverse.into_iter()`, where `column_reverse` is a reversed column (which is a column with order of entries reversed)
-//     //                         Iterator<       Item    =   Self::ColumnEntry                                           >;
+} 
 
-//     type Coefficient            =   MatrixLeft::Coefficient;// The type of coefficient stored in each entry of the matrix    
-//     type RowIndex               =   MatrixLeft::RowIndex;// The type key used to look up rows.  Matrices can have rows indexed by anything: integers, simplices, strings, etc.
-//     type RowEntry               =   MatrixRight::RowEntry;// The type of entries in each row; these are essentially pairs of form `(column_index, coefficient)`
-//     type ColumnIndex            =   MatrixRight::ColumnIndex;// The type of column indices    
-//     type ColumnEntry            =   MatrixLeft::ColEntry;// The type of entries in each column; these are essentially pairs of form `(row_index, coefficient)`
-//     type Row                    =   LinearCombinationSimplified< 
-//                                         MatrixRight::Row, 
-//                                         MatrixRight::ColumnIndex, 
-//                                         MatrixRight::Coefficient, 
-//                                         RingOperator, 
-//                                         OrderOperatorRowEntriesRight,
-//                                     >; // What you get when you ask for a row.
-//     type RowIter                =   Self::Row; // What you get when you call `row.into_iter()`, where `row` is a row
-//     type RowReverse             =   LinearCombinationSimplified< 
-//                                         MatrixRight::RowReverse, 
-//                                         MatrixRight::ColumnIndex, 
-//                                         MatrixRight::Coefficient, 
-//                                         RingOperator, 
-//                                         ReverseOrder< OrderOperatorRowEntriesRight >,
-//                                     >; // What you get when you ask for a row with the order of entries reversed
-//     type RowReverseIter         =   Self::RowReverse; // What you get when you call `row_reverse.into_iter()`, where `row_reverse` is a reversed row (which is a row with order of entries reversed)
-//     type Column                 =   LinearCombinationSimplified< 
-//                                         MatrixLeft::Column, 
-//                                         MatrixLeft::RowIndex, 
-//                                         MatrixLeft::Coefficient, 
-//                                         RingOperator, 
-//                                         OrderOperatorColumnEntriesLeft,
-//                                     >; // What you get when you ask for a column
-//     type ColumnIter             =   Self::Column; // What you get when you call `column.into_iter()`, where `column` is a column
-//     type ColumnReverse          =   LinearCombinationSimplified< 
-//                                         MatrixLeft::ColumnReverse, 
-//                                         MatrixLeft::RowIndex, 
-//                                         MatrixLeft::Coefficient, 
-//                                         RingOperator, 
-//                                         ReverseOrder< OrderOperatorColumnEntriesLeft >,
-//                                     >;// What you get when you ask for a column with the order of entries reversed                             
-//     type ColumnReverseIter      =   Self::ColumnReverse; // What you get when you call `column_reverse.into_iter()`, where `column_reverse` is a reversed column (which is a column with order of entries reversed)
 
-//     fn entry(                   &   self, row: Self::RowIndex, column: Self::ColumnIndex ) ->  Option< Self::Coefficient >;
-//     fn row(                     &   self, index: Self::RowIndex   )   -> Self::Row                 { self.row_opt(index).unwrap() }
-//     fn row_opt(                 &   self, index: Self::RowIndex   )   -> Option<Self::Row>;    
-//     fn row_reverse(             &   self, index: Self::RowIndex   )   -> Self::RowReverse          { self.row_reverse_opt(index).unwrap() }    
-//     fn row_reverse_opt(         &   self, index: Self::RowIndex   )   -> Option<Self::RowReverse>;    
-//     fn column(                  &   self, index: Self::ColumnIndex)   -> Self::Column              { self.column_opt(index).unwrap() }
-//     fn column_opt(              &   self, index: Self::ColumnIndex)   -> Option<Self::Column>;    
-//     fn column_reverse(          &   self, index: Self::ColumnIndex)   -> Self::ColumnReverse       { self.column_reverse_opt(index).unwrap() }            
-//     fn column_reverse_opt(      &   self, index: Self::ColumnIndex)   -> Option<Self::ColumnReverse>;    
 
-// } 
+
+
+impl < Matrix, RingOperator, OrderOperatorForRowEntries, OrderOperatorForRowIndices, OrderOperatorForColumnEntries, OrderOperatorForColumnIndices, > 
+
+    MatrixAlgebra for
+
+    MatrixAlgebraPacket
+        < Matrix, RingOperator, OrderOperatorForRowEntries, OrderOperatorForRowIndices, OrderOperatorForColumnEntries, OrderOperatorForColumnIndices, > 
+
+    where 
+        Matrix:                         MatrixOracle,
+        RingOperator:                   Clone + SemiringOperations< Element = Self::Coefficient >,
+        OrderOperatorForRowEntries:     Clone + JudgeOrder< Self::RowEntry >,
+        OrderOperatorForRowIndices:     Clone + JudgeOrder< Self::RowIndex >,
+        OrderOperatorForColumnEntries:  Clone + JudgeOrder< Self::ColumnEntry >,
+        OrderOperatorForColumnIndices:  Clone + JudgeOrder< Self::ColumnIndex >,   
+    
+{
+    type RingOperator                   =   RingOperator                    ;
+    type OrderOperatorForRowEntries     =   OrderOperatorForRowEntries      ;
+    type OrderOperatorForRowIndices     =   OrderOperatorForRowIndices      ;
+    type OrderOperatorForColumnEntries  =   OrderOperatorForColumnEntries   ;
+    type OrderOperatorForColumnIndices  =   OrderOperatorForColumnIndices   ;
+
+    fn ring_operator( &self ) -> Self::RingOperator {                                           self.ring_operator.clone()                      }
+    fn order_operator_for_row_entries( &self ) -> Self::OrderOperatorForRowEntries {            self.order_operator_for_row_entries.clone()     }
+    fn order_operator_for_row_indices( &self ) -> Self::OrderOperatorForRowIndices {            self.order_operator_for_row_indices.clone()     }    
+    fn order_operator_for_column_entries( &self ) -> Self::OrderOperatorForColumnEntries {      self.order_operator_for_column_entries.clone()  }
+    fn order_operator_for_column_indices( &self ) -> Self::OrderOperatorForColumnIndices {      self.order_operator_for_column_indices.clone()  }    
+}
+
+
+
+
+
+
+
+impl < Matrix, RingOperator, OrderOperatorForRowEntries, OrderOperatorForRowIndices, OrderOperatorForColumnEntries, OrderOperatorForColumnIndices, > 
+
+    MatrixOracleOperations for
+
+    MatrixAlgebraPacket
+        < Matrix, RingOperator, OrderOperatorForRowEntries, OrderOperatorForRowIndices, OrderOperatorForColumnEntries, OrderOperatorForColumnIndices, > 
+{}        
