@@ -5,194 +5,144 @@
 
 
 
-//  GENERAL VECTORWISE TRANSFORM
-//  ---------------------------------------------------------------------
+use derive_new::new;
+use itertools::PutBack;
+use itertools::put_back;
 
-/// Wrapper for matrix oracles; applies `vector_transformer` to each sparse vector returned by the matrix.
+use crate::{algebra::matrices::query::{MatrixAlgebra, MatrixOracle,}, utilities::sets::MapHasKeyOrSequenceHasElement, };
+
+
+
+
+
+
+
+
+
+
+
+//  PUT BACK ROWS
+//  -------------------------------------------------------------------------------------
+
+
+
+/// Wraps every row, column, reverse row, and reverse column of a matrix in a [`PutBack`](itertools::PutBack) iterator.
 /// 
-/// # Examples
+/// This is useful when you want to iterate over the rows or columns of a matrix, but you also want to be able to "put back" the last entry that you have already iterated over.
+/// 
+/// # Example
 /// 
 /// ```
-/// // import crates
-/// use oat_rust::algebra::matrices::operations::transform_vector_wise::VecWiseTransformed;        
+/// use oat_rust::algebra::matrices::operations::transform_vector_wise::PutbackIteratorMatrix;
+/// use oat_rust::algebra::matrices::query::MatrixOracle;
 /// use oat_rust::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
-/// use oat_rust::algebra::matrices::query::ViewRowAscend;
-/// use std::iter::Cloned;
-/// use std::slice::Iter;
-/// use itertools::Itertools;
 /// 
-/// // define a function that doubles the second entry in a tuple
-/// fn double_coefficient( pair: (usize, usize) ) -> (usize, usize) { ( pair.0, 2 * pair.1) } 
-/// fn vector_transformer( iter: Cloned< Iter< '_, (usize,usize) > > ) -> Vec< (usize, usize) > { 
-///     iter
-///     .map(|x| double_coefficient(x) )
-///     .collect_vec() 
-/// }
+/// let matrix = VecOfVec::new( 
+///     vec![ 
+///         vec![(1,1), (2,2), (3,3)], 
+///         vec![(4,4), (5,5), (6,6)] 
+///     ] 
+/// ).ok().unwrap();    
+/// let put_back_matrix = PutbackIteratorMatrix::new( & matrix );
 /// 
-/// // define the untransformed matrix
-/// let matrix_untransformed    =   VecOfVec::new( vec![ vec![ (0,1) ] ] );  
-///     
-/// // define the transformed matrix
-/// let matrix_transformed      =   VecWiseTransformed::new( 
-///                                         & matrix_untransformed,
-///                                         vector_transformer,
-///                                     );
-/// let transformed_vector      =   ( matrix_transformed ).view_major_ascend( 0 ).into_iter().collect_vec();
-/// assert_eq!( transformed_vector, vec![ (0,2) ] )
+/// let mut row = put_back_matrix.row(&0);
+/// assert_eq!( row.next(), Some( (1,1) ) );
+/// row.put_back( (1,1) );
+/// assert_eq!( row.next(), Some( (1,1) ) );
+/// 
+/// let mut column = put_back_matrix.column(&2);
+/// assert_eq!( column.next(), Some( (0,2) ) );
+/// column.put_back( (0,2) );
+/// assert_eq!( column.next(), Some( (0,2) ) );
 /// ```
-pub struct VecWiseTransformed < MatrixUntransformed, VectorTransformer >  {
-    untransformed_matrix:       MatrixUntransformed,
-    vector_transformer:         VectorTransformer,
-}
-
-//  Implement the struct
-impl < 'a, MatrixUntransformed, VectorTransformer >
-        
-    VecWiseTransformed 
-    < MatrixUntransformed, VectorTransformer > 
+/// 
+#[derive(new,Clone,Copy,Debug,Eq,PartialEq,Ord,PartialOrd)]
+pub struct PutbackIteratorMatrix<
+        Matrix,
+    >
 {
-    pub fn new( untransformed_matrix: MatrixUntransformed, vector_transformer: VectorTransformer )
-        ->
-        VecWiseTransformed < MatrixUntransformed, VectorTransformer > 
-    {
-        VecWiseTransformed{
-            untransformed_matrix,
-            vector_transformer,
-        }        
-    }
+    matrix:                         Matrix,
 }
+  
 
-// IndicesAndCoefficients
-impl < MatrixUntransformed, ViewMajorAscendTransformed, VectorTransformer, > 
+// Implement MatrixOracle
+impl < Matrix >
 
-    IndicesAndCoefficients for  
+    MatrixOracle for  
 
-    VecWiseTransformed
-        < MatrixUntransformed, VectorTransformer > where
+    PutbackIteratorMatrix
+        < Matrix >
 
-    MatrixUntransformed:            IndicesAndCoefficients + ViewRowAscend,
-    ViewMajorAscendTransformed:     IntoIterator,
-    MatrixUntransformed:            ViewRowAscend,
-    VectorTransformer:              Fn( MatrixUntransformed::ViewMajorAscend ) -> ViewMajorAscendTransformed,  
-
-{
-    type EntryMajor = ViewMajorAscendTransformed::Item;
-    type EntryMinor = MatrixUntransformed::EntryMinor;
-    type ColIndex = MatrixUntransformed::ColIndex; 
-    type RowIndex = MatrixUntransformed::RowIndex; 
-    type Coefficient = MatrixUntransformed::Coefficient; 
-}  
-
-
-//  ViewRowAscend
-impl    < MatrixUntransformed, ViewMajorAscendTransformed, VectorTransformer, > 
-
-        ViewRowAscend for 
-
-        VecWiseTransformed
-            < MatrixUntransformed, VectorTransformer > where
-
-        MatrixUntransformed:            ViewRowAscend + IndicesAndCoefficients,
-        ViewMajorAscendTransformed:     IntoIterator,
-        MatrixUntransformed:            ViewRowAscend,
-        VectorTransformer:              Fn( MatrixUntransformed::ViewMajorAscend ) -> ViewMajorAscendTransformed,                                    
-{
-    type ViewMajorAscend            =   ViewMajorAscendTransformed;
-    type ViewMajorAscendIntoIter    =   ViewMajorAscendTransformed::IntoIter;
-
-    fn view_major_ascend ( & self, majkey: Self::RowIndex ) -> Self::ViewMajorAscend { 
-        (self.vector_transformer)(  self.untransformed_matrix.view_major_ascend( majkey )  )
-    }
-}
-
-
-
-
-//  SIMPLIFY VECTORS
-//  ---------------------------------------------------------------------
-
-
-
-
-use crate::{algebra::matrices::query::{ViewRowAscend, ViewRow, IndicesAndCoefficients, ViewColDescend, ViewCol}, utilities::{iterators::general::PeekUnqualified, sets::MapHasKeyOrSequenceHasElement}, algebra::rings::operator_traits::Semiring, algebra::vectors::operations::{Simplify, VectorOperations}, };
-use crate::algebra::vectors::entries::{KeyValGet, KeyValSet};
-
-/// Wrapper for matrix oracles; applies `.simplify()` to each iterator returned by the matrix.
-struct MatrixSimplify 
-        < MatrixUnsimplified, RingOperator >  
     where
-        MatrixUnsimplified:     IndicesAndCoefficients
+        Matrix:                             MatrixOracle,    
 {
-    ring_operator:              RingOperator,
-    unsimplified_matrix:        MatrixUnsimplified,
+    type Coefficient            =     Matrix::Coefficient;   // The type of coefficient stored in each entry of the matrix    
+    type RowIndex               =     Matrix::RowIndex;      // The type key used to look up rows.  Matrices can have rows indexed by anything: integers, simplices, strings, etc.
+    type ColumnIndex            =     Matrix::ColumnIndex;   // The type of column indices    
+    type RowEntry               =     Matrix::RowEntry;      // The type of entries in each row; these are essentially pairs of form `(column_index, coefficient)`
+    type ColumnEntry            =     Matrix::ColumnEntry;   // The type of entries in each column; these are essentially pairs of form `(row_index, coefficient)`
+    type Row                    =     PutBack< Matrix::Row >;           // What you get when you ask for a row.
+    type RowReverse             =     PutBack< Matrix::RowReverse >;    // What you get when you ask for a row with the order of entries reversed
+    type Column                 =     PutBack< Matrix::Column >;        // What you get when you ask for a column
+    type ColumnReverse          =     PutBack< Matrix::ColumnReverse >; // What you get when you ask for a column with the order of entries reversed                             
+
+
+    fn row(                     &   self, index: &Self::RowIndex   )   -> Self::Row
+        { put_back( self.matrix.row(index) ) }         
+    fn row_reverse(             &   self, index: &Self::RowIndex   )   -> Self::RowReverse
+        { put_back( self.matrix.row_reverse(index) ) }   
+    fn column(                  &   self, index: & Self::ColumnIndex)   -> Self::Column
+        { put_back( self.matrix.column(index) ) }
+    fn column_reverse(          &   self, index: & Self::ColumnIndex)   -> Self::ColumnReverse
+        { put_back( self.matrix.column_reverse(index) ) }
+
+    fn has_row_for_index(     &   self, index: &Self::RowIndex   )   -> bool
+        { self.matrix.has_row_for_index(index) }
+    fn has_column_for_index(  &   self, index: & Self::ColumnIndex)   -> bool
+        { 
+            self.matrix.has_column_for_index(index)
+        }    
+    fn structural_nonzero_entry(                   &   self, row:   & Self::RowIndex, column: & Self::ColumnIndex ) ->  Option< Self::Coefficient >
+        { self.matrix.structural_nonzero_entry( row, column ) }
+
 }
 
-// IndicesAndCoefficients
-
-impl < MatrixUnsimplified: IndicesAndCoefficients, RingOperator >
-
-    IndicesAndCoefficients for  
-
-    MatrixSimplify
-        < MatrixUnsimplified, RingOperator > where
-                
-    MatrixUnsimplified:                             ViewRowAscend + IndicesAndCoefficients,
-    MatrixUnsimplified::ViewMajorAscend:            IntoIterator,
-    // The next uncommented requirement is the same as the following commented one (Rust just has a hard time seeing that they are equivalent)
-    // MatrixUnsimplified::EntryMajor:       KeyValGet < MatrixUnsimplified::ColIndex, MatrixUnsimplified::Coefficient, > + 
-    //                                                 KeyValSet < MatrixUnsimplified::ColIndex, MatrixUnsimplified::Coefficient, >,        
-    < MatrixUnsimplified::ViewMajorAscendIntoIter as IntoIterator >::Item:
-                                                    KeyValGet < MatrixUnsimplified::ColIndex, MatrixUnsimplified::Coefficient, > + 
-                                                    KeyValSet < MatrixUnsimplified::ColIndex, MatrixUnsimplified::Coefficient, >,        
-    MatrixUnsimplified::ViewMajorAscendIntoIter:    PeekUnqualified,  
-    MatrixUnsimplified::ColIndex:                     std::cmp::PartialEq,
-    RingOperator:                                   Clone + Semiring< MatrixUnsimplified::Coefficient >,  
-
-{ 
-    type EntryMajor = MatrixUnsimplified::EntryMajor;
-    type EntryMinor = MatrixUnsimplified::EntryMinor;    
-    type RowIndex = MatrixUnsimplified::RowIndex; 
-    type ColIndex = MatrixUnsimplified::ColIndex;     
-    type Coefficient = MatrixUnsimplified::Coefficient; 
-}  
 
 
-// ViewRowAscend
-impl    < MatrixUnsimplified, RingOperator > 
+// Implement MatrixAlgebra
+impl < Matrix >
 
-        ViewRowAscend for 
+    MatrixAlgebra for  
 
-        MatrixSimplify
-            < MatrixUnsimplified, RingOperator > where
-                
-        MatrixUnsimplified:                             ViewRowAscend + IndicesAndCoefficients,
-        MatrixUnsimplified::ViewMajorAscend:            IntoIterator,
-        // The next uncommented requirement is the same as the following commented one (Rust just has a hard time seeing that they are equivalent)
-        // MatrixUnsimplified::EntryMajor:       KeyValGet < MatrixUnsimplified::ColIndex, MatrixUnsimplified::Coefficient, > + 
-        //                                                 KeyValSet < MatrixUnsimplified::ColIndex, MatrixUnsimplified::Coefficient, >,        
-        < MatrixUnsimplified::ViewMajorAscendIntoIter as IntoIterator >::Item:
-                                                        KeyValGet < MatrixUnsimplified::ColIndex, MatrixUnsimplified::Coefficient, > + 
-                                                        KeyValSet < MatrixUnsimplified::ColIndex, MatrixUnsimplified::Coefficient, >,        
-        MatrixUnsimplified::ViewMajorAscendIntoIter:    PeekUnqualified,  
-        MatrixUnsimplified::ColIndex:                     std::cmp::PartialEq,
-        RingOperator:                                   Clone + Semiring< MatrixUnsimplified::Coefficient >,
+    PutbackIteratorMatrix
+        < Matrix >
+
+    where
+        Matrix:                             MatrixAlgebra,    
 {
-    type ViewMajorAscendIntoIter    =   < Self::ViewMajorAscend as IntoIterator >::IntoIter;    
-    type ViewMajorAscend            =   Simplify<
-                                                MatrixUnsimplified::ViewMajorAscendIntoIter,
-                                                MatrixUnsimplified::ColIndex,
-                                                RingOperator,
-                                                MatrixUnsimplified::Coefficient,
-                                            > ;    
+    type RingOperator                   =   Matrix::RingOperator;
+    type OrderOperatorForRowEntries     =   Matrix::OrderOperatorForRowEntries;
+    type OrderOperatorForRowIndices     =   Matrix::OrderOperatorForRowIndices;
+    type OrderOperatorForColumnEntries  =   Matrix::OrderOperatorForColumnEntries;
+    type OrderOperatorForColumnIndices  =   Matrix::OrderOperatorForColumnIndices;
 
-    fn view_major_ascend ( & self, majkey: Self::RowIndex) -> Self::ViewMajorAscend { 
-        
-        self.unsimplified_matrix
-                .view_major_ascend( majkey )
-                .into_iter()
-                .simplify( self.ring_operator.clone() )
-    }
+    fn ring_operator( &self ) -> Self::RingOperator { self.matrix.ring_operator() }
+    fn order_operator_for_row_entries( &self ) -> Self::OrderOperatorForRowEntries { self.matrix.order_operator_for_row_entries() }
+    fn order_operator_for_row_indices( &self ) -> Self::OrderOperatorForRowIndices { self.matrix.order_operator_for_row_indices() }    
+    fn order_operator_for_column_entries( &self ) -> Self::OrderOperatorForColumnEntries { self.matrix.order_operator_for_column_entries() }
+    fn order_operator_for_column_indices( &self ) -> Self::OrderOperatorForColumnIndices { self.matrix.order_operator_for_column_indices() }   
 }
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -201,240 +151,241 @@ impl    < MatrixUnsimplified, RingOperator >
 //  MASK: ONLY INDICES OUTSIDE
 //  -------------------------------------------------------------------------------------
 
-//  MINOR KEYS
+//  COLUMNS
 //  -----------------------------------------
 
 use crate::algebra::vectors::operations::OnlyIndicesOutsideCollection;
 
 
-/// A matrix oracle whose major views iterate only over entries that have indices **outside**
+/// A matrix oracle whose rows iterate only over entries that have indices **outside**
 /// a given collection.
-pub struct OnlyKeyMinOutsideCollection<
-        Matrix, KeyMinToExclude,
+#[derive(Clone,Copy,Debug,Eq,PartialEq,Ord,PartialOrd)]
+pub struct OnlyColumnIndicesOutsideCollection<
+        Matrix, ColumnIndicesToExclude,
     >
     where
-        Matrix:                         IndicesAndCoefficients,    
-        KeyMinToExclude:               MapHasKeyOrSequenceHasElement< Matrix::ColIndex >,                  
+        Matrix:                         MatrixOracle,    
+        ColumnIndicesToExclude:         MapHasKeyOrSequenceHasElement< Matrix::ColumnIndex >,                  
 {
-    matrix:                     Matrix,
-    keymins_to_exclude:         KeyMinToExclude,
+    matrix:                         Matrix,
+    column_indices_to_exclude:       ColumnIndicesToExclude,
 }
 
 // implement the object
-impl < Matrix, KeyMinToExclude, >
+impl < Matrix, ColumnIndicesToExclude, >
 
-    OnlyKeyMinOutsideCollection
-        < Matrix, KeyMinToExclude >
+    OnlyColumnIndicesOutsideCollection
+        < Matrix, ColumnIndicesToExclude >
 
     where
-        Matrix:                         IndicesAndCoefficients,    
-        KeyMinToExclude:               MapHasKeyOrSequenceHasElement< Matrix::ColIndex >,                          
+        Matrix:                         MatrixOracle,    
+        ColumnIndicesToExclude:               MapHasKeyOrSequenceHasElement< Matrix::ColumnIndex >,                          
 
     {
-        /// Create a new `OnlyKeyMinOutsideCollection` from a matrix and a collection
-        /// of minor keys.
+        /// Create a new [OnlyColumnIndicesOutsideCollection] from a matrix and a collection
+        /// of column indices.
         /// 
-        /// In order to operate properly, the collection of minor keys should implement
+        /// In order to operate properly, the collection of column indices should implement
         /// the [`MapHasKeyOrSequenceHasElement`](crate::utilities::sets::MapHasKeyOrSequenceHasElement) 
         /// trait.
-        pub fn new( matrix: Matrix, keymins_to_exclude: KeyMinToExclude ) 
+        pub fn new( matrix: Matrix, column_indices_to_exclude: ColumnIndicesToExclude ) 
         -> 
-        OnlyKeyMinOutsideCollection
-            < Matrix, KeyMinToExclude >
+        OnlyColumnIndicesOutsideCollection
+            < Matrix, ColumnIndicesToExclude >
         where
-            Matrix:                         ViewRowAscend + IndicesAndCoefficients,    
-            Matrix::ViewMajorAscend:        IntoIterator,
-            KeyMinToExclude:               MapHasKeyOrSequenceHasElement< Matrix::ColIndex >,              
-        { OnlyKeyMinOutsideCollection{ matrix, keymins_to_exclude, } }
-    }    
+            Matrix:                         MatrixOracle,    
+            ColumnIndicesToExclude:               MapHasKeyOrSequenceHasElement< Matrix::ColumnIndex >,              
+        { OnlyColumnIndicesOutsideCollection{ matrix, column_indices_to_exclude: column_indices_to_exclude, } }
+    }     
 
-// IndicesAndCoefficients
+// Implement MatrixOracle
+impl < Matrix, ColumnIndicesToExclude >
 
-impl < Matrix: IndicesAndCoefficients, KeyMinToExclude >
+    MatrixOracle for  
 
-    IndicesAndCoefficients for  
-
-    OnlyKeyMinOutsideCollection
-        < Matrix, KeyMinToExclude >
+    OnlyColumnIndicesOutsideCollection
+        < Matrix, ColumnIndicesToExclude >
 
     where
-        Matrix:                             IndicesAndCoefficients,
-        KeyMinToExclude:                    Copy + MapHasKeyOrSequenceHasElement< Matrix::ColIndex >,            
-{ 
-    type EntryMajor = Matrix::EntryMajor;
-    type EntryMinor = Matrix::EntryMinor;    
-    type ColIndex = Matrix::ColIndex; 
-    type RowIndex = Matrix::RowIndex; 
-    type Coefficient = Matrix::Coefficient; 
-}        
-
-
-// ViewMajorAscend
-impl < Matrix, KeyMinToExclude >
-
-    ViewRowAscend for  
-
-    OnlyKeyMinOutsideCollection
-        < Matrix, KeyMinToExclude >
-
-    where
-        Matrix:                             ViewRowAscend + IndicesAndCoefficients,    
-        Matrix::ViewMajorAscend:            IntoIterator,
-        Matrix::EntryMajor:                 KeyValGet< Matrix::ColIndex, Matrix::Coefficient >,
-        KeyMinToExclude:                    Copy + MapHasKeyOrSequenceHasElement< Matrix::ColIndex >,  
-        Matrix::ViewMajorAscendIntoIter:    Iterator,      
+        Matrix:                             MatrixOracle,    
+        ColumnIndicesToExclude:             Copy + MapHasKeyOrSequenceHasElement< Matrix::ColumnIndex >,    
 {
-    type ViewMajorAscendIntoIter    =   < Self::ViewMajorAscend as IntoIterator >::IntoIter;
-    type ViewMajorAscend            =   OnlyIndicesOutsideCollection< Matrix::ViewMajorAscendIntoIter, KeyMinToExclude, Self::ColIndex, Self::Coefficient >;  
-    
-    fn view_major_ascend( &self, keymaj: Self::RowIndex) 
-        -> 
-        OnlyIndicesOutsideCollection< Matrix::ViewMajorAscendIntoIter, KeyMinToExclude, Matrix::ColIndex, Matrix::Coefficient >  
-    { 
-        OnlyIndicesOutsideCollection::new( self.matrix.view_major_ascend(keymaj).into_iter(), self.keymins_to_exclude  ) 
-    }
-}
+    type Coefficient            =     Matrix::Coefficient;   // The type of coefficient stored in each entry of the matrix    
+    type RowIndex               =     Matrix::RowIndex;      // The type key used to look up rows.  Matrices can have rows indexed by anything: integers, simplices, strings, etc.
+    type ColumnIndex            =     Matrix::ColumnIndex;   // The type of column indices    
+    type RowEntry               =     Matrix::RowEntry;      // The type of entries in each row; these are essentially pairs of form `(column_index, coefficient)`
+    type ColumnEntry            =     Matrix::ColumnEntry;   // The type of entries in each column; these are essentially pairs of form `(row_index, coefficient)`
+    type Row                    =     OnlyIndicesOutsideCollection< Matrix::Row, ColumnIndicesToExclude >;           // What you get when you ask for a row.
+    type RowReverse             =     OnlyIndicesOutsideCollection< Matrix::RowReverse, ColumnIndicesToExclude >;    // What you get when you ask for a row with the order of entries reversed
+    type Column                 =     Matrix::Column;        // What you get when you ask for a column
+    type ColumnReverse          =     Matrix::ColumnReverse; // What you get when you ask for a column with the order of entries reversed                             
 
-// ViewMajor
-impl < Matrix, KeyMinToExclude >
 
-    ViewRow for  
+    fn row(                     &   self, index: &Self::RowIndex   )   -> Self::Row
+        { OnlyIndicesOutsideCollection::new( self.matrix.row(index), self.column_indices_to_exclude  )  }        
+    fn row_reverse(             &   self, index: &Self::RowIndex   )   -> Self::RowReverse
+        { OnlyIndicesOutsideCollection::new( self.matrix.row_reverse(index), self.column_indices_to_exclude  )  }    
+    fn column(                  &   self, index: & Self::ColumnIndex)   -> Self::Column
+        { self.matrix.column(index) }    
+    fn column_reverse(          &   self, index: & Self::ColumnIndex)   -> Self::ColumnReverse
+        { self.matrix.column_reverse(index) }
 
-    OnlyKeyMinOutsideCollection
-        < Matrix, KeyMinToExclude >
+    fn has_row_for_index(     &   self, index: &Self::RowIndex   )   -> bool
+        { self.matrix.has_row_for_index(index) }
+    fn has_column_for_index(  &   self, index: & Self::ColumnIndex)   -> bool
+        { 
+            let matrix_has_column = self.matrix.has_column_for_index(index);
+            let column_is_excluded = self.column_indices_to_exclude.map_has_key_or_sequence_has_element(index);
+            return matrix_has_column && (! column_is_excluded)
+        }    
+    fn structural_nonzero_entry(                   &   self, row:   & Self::RowIndex, column: & Self::ColumnIndex ) ->  Option< Self::Coefficient >
+        { self.matrix.structural_nonzero_entry( row, column ) }
 
-    where
-        Matrix:                     ViewRow + IndicesAndCoefficients,    
-        Matrix::ViewMajor:          IntoIterator,
-        Matrix::EntryMajor:         KeyValGet< Matrix::ColIndex, Matrix::Coefficient >,
-        KeyMinToExclude:            Copy + MapHasKeyOrSequenceHasElement< Matrix::ColIndex >,  
-        Matrix::ViewMajorIntoIter:  Iterator,      
-{
-    type ViewMajorIntoIter    =   < Self::ViewMajor as IntoIterator >::IntoIter;
-    type ViewMajor            =   OnlyIndicesOutsideCollection< Matrix::ViewMajorIntoIter, KeyMinToExclude, Self::ColIndex, Self::Coefficient >;  
-
-    fn view_major( &self, keymaj: Self::RowIndex) -> Self::ViewMajor
-    { 
-        OnlyIndicesOutsideCollection::new( self.matrix.view_major(keymaj).into_iter(), self.keymins_to_exclude  ) 
-    }
 }
 
 
 
-//  MAJOR KEYS
+// Implement MatrixAlgebra
+impl < Matrix, ColumnIndicesToExclude >
+
+    MatrixAlgebra for  
+
+    OnlyColumnIndicesOutsideCollection
+        < Matrix, ColumnIndicesToExclude >
+
+    where
+        Matrix:                             MatrixAlgebra,    
+        ColumnIndicesToExclude:             Copy + MapHasKeyOrSequenceHasElement< Matrix::ColumnIndex >,   
+{
+    type RingOperator                   =   Matrix::RingOperator;
+    type OrderOperatorForRowEntries     =   Matrix::OrderOperatorForRowEntries;
+    type OrderOperatorForRowIndices     =   Matrix::OrderOperatorForRowIndices;
+    type OrderOperatorForColumnEntries  =   Matrix::OrderOperatorForColumnEntries;
+    type OrderOperatorForColumnIndices  =   Matrix::OrderOperatorForColumnIndices;
+
+    fn ring_operator( &self ) -> Self::RingOperator { self.matrix.ring_operator() }
+    fn order_operator_for_row_entries( &self ) -> Self::OrderOperatorForRowEntries { self.matrix.order_operator_for_row_entries() }
+    fn order_operator_for_row_indices( &self ) -> Self::OrderOperatorForRowIndices { self.matrix.order_operator_for_row_indices() }    
+    fn order_operator_for_column_entries( &self ) -> Self::OrderOperatorForColumnEntries { self.matrix.order_operator_for_column_entries() }
+    fn order_operator_for_column_indices( &self ) -> Self::OrderOperatorForColumnIndices { self.matrix.order_operator_for_column_indices() }   
+}
+
+
+
+
+//  ROWS
 //  -----------------------------------------
 
 
-/// A matrix oracle whose major views iterate only over entries that have indices **outside**
+/// A matrix oracle whose columns iterate only over entries that have indices **outside**
 /// a given collection.
-pub struct OnlyKeyMajOutsideCollection<
-        Matrix, KeyMajToExclude,
+#[derive(Clone,Copy,Debug,Eq,PartialEq,Ord,PartialOrd)]
+pub struct OnlyRowIndicesOutsideCollection<
+        Matrix, RowIndicesToExclude,
     >
     where
-        Matrix:                         IndicesAndCoefficients,    
-        KeyMajToExclude:                MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,                  
+        Matrix:                             MatrixOracle,    
+        RowIndicesToExclude:                MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,                  
 {
-    matrix:                     Matrix,
-    keymajs_to_exclude:         KeyMajToExclude,
+    matrix:                                 Matrix,
+    row_indices_to_exclude:                 RowIndicesToExclude,
 }
 
 // implement the object
-impl < Matrix, KeyMajToExclude, >
+impl < Matrix, RowIndicesToExclude, >
 
-    OnlyKeyMajOutsideCollection
-        < Matrix, KeyMajToExclude >
+    OnlyRowIndicesOutsideCollection
+        < Matrix, RowIndicesToExclude >
 
     where
-        Matrix:                        IndicesAndCoefficients,    
-        KeyMajToExclude:               MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,                          
+        Matrix:                        MatrixOracle,    
+        RowIndicesToExclude:               MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,                          
 
     {
-        /// Create a new `OnlyKeyMajOutsideCollection` from a matrix and a collection
-        /// of minor keys.
+        /// Create a new [OnlyRowIndicesOutsideCollection] from a matrix and a collection
+        /// of column indices.
         /// 
-        /// In order to operate properly, the collection of minor keys should implement
+        /// In order to operate properly, the collection of column indices should implement
         /// the [`MapHasKeyOrSequenceHasElement`](crate::utilities::sets::MapHasKeyOrSequenceHasElement) 
         /// trait.
-        pub fn new( matrix: Matrix, keymajs_to_exclude: KeyMajToExclude ) 
+        pub fn new( matrix: Matrix, row_indices_to_exclude: RowIndicesToExclude ) 
         -> 
-        OnlyKeyMajOutsideCollection
-            < Matrix, KeyMajToExclude >
-        where
-            Matrix:                         IndicesAndCoefficients,    
-            KeyMajToExclude:                MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,              
-        { OnlyKeyMajOutsideCollection{ matrix, keymajs_to_exclude, } }
+        OnlyRowIndicesOutsideCollection
+            < Matrix, RowIndicesToExclude >
+        { OnlyRowIndicesOutsideCollection{ matrix, row_indices_to_exclude: row_indices_to_exclude, } }
     }    
 
-// IndicesAndCoefficients
 
-impl < Matrix: IndicesAndCoefficients, KeyMajToExclude >
+// Implement MatrixOracle
+impl < Matrix, RowIndicesToExclude >
 
-    IndicesAndCoefficients for  
+    MatrixOracle for  
 
-    OnlyKeyMajOutsideCollection
-        < Matrix, KeyMajToExclude >
-
-    where
-        Matrix:                        IndicesAndCoefficients,    
-        KeyMajToExclude:               MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,         
-
-{ 
-    type EntryMajor = Matrix::EntryMajor;
-    type EntryMinor = Matrix::EntryMinor;
-    type ColIndex = Matrix::ColIndex; 
-    type RowIndex = Matrix::RowIndex; 
-    type Coefficient = Matrix::Coefficient; 
-}        
-
-
-// ViewMinorDescend
-impl < Matrix, KeyMajToExclude >
-
-    ViewColDescend for  
-
-    OnlyKeyMajOutsideCollection
-        < Matrix, KeyMajToExclude >
+    OnlyRowIndicesOutsideCollection
+        < Matrix, RowIndicesToExclude >
 
     where
-        Matrix:                                                 ViewColDescend + IndicesAndCoefficients,    
-        Matrix::ViewMinorDescend:                                IntoIterator,
-        Matrix::EntryMinor:                           KeyValGet< Matrix::RowIndex, Matrix::Coefficient >,
-        KeyMajToExclude:                                       Copy + MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,  
-        Matrix::ViewMinorDescendIntoIter:                        Iterator,      
+        Matrix:                         MatrixOracle,    
+        RowIndicesToExclude:            Copy + MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,    
 {
-    type ViewMinorDescendIntoIter    =   < Self::ViewMinorDescend as IntoIterator >::IntoIter;
-    type ViewMinorDescend            =   OnlyIndicesOutsideCollection< Matrix::ViewMinorDescendIntoIter, KeyMajToExclude, Self::RowIndex, Self::Coefficient >;  
-    
-    fn view_minor_descend( &self, keymin: Self::ColIndex ) 
-        -> 
-        OnlyIndicesOutsideCollection< Matrix::ViewMinorDescendIntoIter, KeyMajToExclude, Matrix::RowIndex, Matrix::Coefficient >  
-    { 
-        OnlyIndicesOutsideCollection::new( self.matrix.view_minor_descend(keymin).into_iter(), self.keymajs_to_exclude  ) 
-    }
+    type Coefficient            =     Matrix::Coefficient;   // The type of coefficient stored in each entry of the matrix    
+    type RowIndex               =     Matrix::RowIndex;      // The type key used to look up rows.  Matrices can have rows indexed by anything: integers, simplices, strings, etc.
+    type ColumnIndex            =     Matrix::ColumnIndex;   // The type of column indices    
+    type RowEntry               =     Matrix::RowEntry;      // The type of entries in each row; these are essentially pairs of form `(column_index, coefficient)`
+    type ColumnEntry            =     Matrix::ColumnEntry;   // The type of entries in each column; these are essentially pairs of form `(row_index, coefficient)`
+    type Row                    =     Matrix::Row;           // What you get when you ask for a row.
+    type RowReverse             =     Matrix::RowReverse;    // What you get when you ask for a row with the order of entries reversed
+    type Column                 =     OnlyIndicesOutsideCollection< Matrix::Column,        RowIndicesToExclude >;        // What you get when you ask for a column
+    type ColumnReverse          =     OnlyIndicesOutsideCollection< Matrix::ColumnReverse, RowIndicesToExclude >; // What you get when you ask for a column with the order of entries reversed                             
+
+
+    fn row(                     &   self, index: &Self::RowIndex   )   -> Self::Row
+        { self.matrix.row(index) }    
+    fn row_reverse(             &   self, index: &Self::RowIndex   )   -> Self::RowReverse
+        { self.matrix.row_reverse(index) }
+    fn column(                  &   self, index: & Self::ColumnIndex)   -> Self::Column
+        { OnlyIndicesOutsideCollection::new( self.matrix.column(index), self.row_indices_to_exclude  )  }        
+    fn column_reverse(          &   self, index: & Self::ColumnIndex)   -> Self::ColumnReverse
+        { OnlyIndicesOutsideCollection::new( self.matrix.column_reverse(index), self.row_indices_to_exclude  )  }    
+
+    fn has_row_for_index(     &   self, index: &Self::RowIndex   )   -> bool
+        { 
+            let matrix_has_row = self.matrix.has_row_for_index(index);
+            let row_is_excluded = self.row_indices_to_exclude.map_has_key_or_sequence_has_element(index);
+            return matrix_has_row && (! row_is_excluded)
+        }    
+    fn has_column_for_index(  &   self, index: & Self::ColumnIndex)   -> bool
+        { self.matrix.has_column_for_index(index) }    
+    fn structural_nonzero_entry(                   &   self, row:   & Self::RowIndex, column: & Self::ColumnIndex ) ->  Option< Self::Coefficient >
+        { self.matrix.structural_nonzero_entry( row, column ) }
+
 }
 
-// ViewMajor
-impl < Matrix, KeyMajToExclude >
 
-    ViewCol for  
 
-    OnlyKeyMajOutsideCollection
-        < Matrix, KeyMajToExclude >
+// Implement MatrixAlgebra
+impl < Matrix, RowIndicesToExclude >
+
+    MatrixAlgebra for  
+
+    OnlyRowIndicesOutsideCollection
+        < Matrix, RowIndicesToExclude >
 
     where
-        Matrix:                                           ViewCol + IndicesAndCoefficients,    
-        Matrix::ViewMinor:                                IntoIterator,
-        Matrix::EntryMinor:                           KeyValGet< Matrix::RowIndex, Matrix::Coefficient >,
-        KeyMajToExclude:                                 Copy + MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,  
-        Matrix::ViewMinorIntoIter:                        Iterator,      
+        Matrix:                         MatrixAlgebra,    
+        RowIndicesToExclude:            Copy + MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,    
 {
-    type ViewMinorIntoIter    =   < Self::ViewMinor as IntoIterator >::IntoIter;
-    type ViewMinor            =   OnlyIndicesOutsideCollection< Matrix::ViewMinorIntoIter, KeyMajToExclude, Self::RowIndex, Self::Coefficient >;  
+    type RingOperator                   =   Matrix::RingOperator;
+    type OrderOperatorForRowEntries     =   Matrix::OrderOperatorForRowEntries;
+    type OrderOperatorForRowIndices     =   Matrix::OrderOperatorForRowIndices;
+    type OrderOperatorForColumnEntries  =   Matrix::OrderOperatorForColumnEntries;
+    type OrderOperatorForColumnIndices  =   Matrix::OrderOperatorForColumnIndices;
 
-    fn view_minor( &self, keymin: Self::ColIndex) -> Self::ViewMinor
-    { 
-        OnlyIndicesOutsideCollection::new( self.matrix.view_minor(keymin).into_iter(), self.keymajs_to_exclude  ) 
-    }
+    fn ring_operator( &self ) -> Self::RingOperator { self.matrix.ring_operator() }
+    fn order_operator_for_row_entries( &self ) -> Self::OrderOperatorForRowEntries { self.matrix.order_operator_for_row_entries() }
+    fn order_operator_for_row_indices( &self ) -> Self::OrderOperatorForRowIndices { self.matrix.order_operator_for_row_indices() }    
+    fn order_operator_for_column_entries( &self ) -> Self::OrderOperatorForColumnEntries { self.matrix.order_operator_for_column_entries() }
+    fn order_operator_for_column_indices( &self ) -> Self::OrderOperatorForColumnIndices { self.matrix.order_operator_for_column_indices() }   
 }
 
 
@@ -444,239 +395,239 @@ impl < Matrix, KeyMajToExclude >
 
 
 
-//  MINOR KEYS
+//  COLUMNS
 //  -----------------------------------------
 
 
 use crate::algebra::vectors::operations::OnlyIndicesInsideCollection;
 
 
-/// A matrix oracle whose major views iterate only over entries that have indices **outside**
+/// A matrix oracle whose rows iterate only over entries that have indices **outside**
 /// a given collection.
-#[derive(Copy, Clone)]
-pub struct OnlyKeyMinInsideCollection
-                < Matrix, KeyMinToInclude, >
+#[derive(Clone,Copy,Debug,Eq,PartialEq,Ord,PartialOrd)]
+pub struct OnlyColumnIndicesInsideCollection
+                < Matrix, ColumnIndicesToInclude, >
 {
-    matrix:                     Matrix,
-    keymins_to_include:         KeyMinToInclude,   
+    matrix:                             Matrix,
+    column_indices_to_include:          ColumnIndicesToInclude,   
 }
 
 // implement the object
-impl < Matrix, KeyMinToInclude >
+impl < Matrix, ColumnIndicesToInclude >
 
-    OnlyKeyMinInsideCollection
-        < Matrix, KeyMinToInclude >
+    OnlyColumnIndicesInsideCollection
+        < Matrix, ColumnIndicesToInclude >
 
     {
-        /// Create a new `OnlyKeyMinInsideColletion` from a matrix and a collection
-        /// of minor keys.
+        /// Create a new [OnlyColumnIndicesInsideCollection] from a matrix and a collection
+        /// of column indices.
         /// 
-        /// In order to operate properly, the collection of minor keys should implement
+        /// In order to operate properly, the collection of column indices should implement
         /// the [`MapHasKeyOrSequenceHasElement`](crate::utilities::sets::MapHasKeyOrSequenceHasElement) 
         /// trait.
-        pub fn new( matrix: Matrix, keymins_to_include: KeyMinToInclude ) 
+        pub fn new( matrix: Matrix, column_indices_to_include: ColumnIndicesToInclude ) 
         -> 
-        OnlyKeyMinInsideCollection
-            < Matrix, KeyMinToInclude, >
+        OnlyColumnIndicesInsideCollection
+            < Matrix, ColumnIndicesToInclude, >
         where
-            Matrix:                 IndicesAndCoefficients,    
-            KeyMinToInclude:       MapHasKeyOrSequenceHasElement< Matrix::ColIndex >,              
-        { OnlyKeyMinInsideCollection{ matrix, keymins_to_include } }
+            Matrix:                         MatrixOracle,    
+            ColumnIndicesToInclude:         MapHasKeyOrSequenceHasElement< Matrix::ColumnIndex >,              
+        { OnlyColumnIndicesInsideCollection{ matrix, column_indices_to_include } }
     }    
 
-// IndicesAndCoefficients
-impl < Matrix: IndicesAndCoefficients, KeyMinToInclude >
-
-    IndicesAndCoefficients for  
-
-    OnlyKeyMinInsideCollection
-        < Matrix, KeyMinToInclude >
-
-{ 
-    type EntryMajor = Matrix::EntryMajor;
-    type EntryMinor = Matrix::EntryMinor;
-    type ColIndex = Matrix::ColIndex; 
-    type RowIndex = Matrix::RowIndex; 
-    type Coefficient = Matrix::Coefficient; 
-} 
 
 
-// ViewMajorAscend
-impl < Matrix, KeyMinToInclude >
 
-    ViewRowAscend for  
 
-    OnlyKeyMinInsideCollection
-        < Matrix, KeyMinToInclude >
+// Implement MatrixOracle
+impl < Matrix, ColumnIndicesToInclude >
+
+    MatrixOracle for  
+
+    OnlyColumnIndicesInsideCollection
+        < Matrix, ColumnIndicesToInclude >
 
     where
-        Matrix:                             ViewRowAscend + IndicesAndCoefficients,    
-        Matrix::ViewMajorAscend:            IntoIterator,
-        Matrix::ViewMajorAscendIntoIter:    Iterator,
-        Matrix::EntryMajor:   KeyValGet< Matrix::ColIndex, Matrix::Coefficient >,        
-        KeyMinToInclude:                   MapHasKeyOrSequenceHasElement< Self::ColIndex > + Copy,   
+        Matrix:                             MatrixOracle,    
+        ColumnIndicesToInclude:             Copy + MapHasKeyOrSequenceHasElement< Matrix::ColumnIndex >,    
 {
-    type ViewMajorAscendIntoIter    =   < Self::ViewMajorAscend as IntoIterator >::IntoIter;
-    type ViewMajorAscend            =   OnlyIndicesInsideCollection< Matrix::ViewMajorAscendIntoIter, KeyMinToInclude, Matrix::ColIndex, Matrix::Coefficient >;  
+    type Coefficient            =     Matrix::Coefficient;   // The type of coefficient stored in each entry of the matrix    
+    type RowIndex               =     Matrix::RowIndex;      // The type key used to look up rows.  Matrices can have rows indexed by anything: integers, simplices, strings, etc.
+    type ColumnIndex            =     Matrix::ColumnIndex;   // The type of column indices    
+    type RowEntry               =     Matrix::RowEntry;      // The type of entries in each row; these are essentially pairs of form `(column_index, coefficient)`
+    type ColumnEntry            =     Matrix::ColumnEntry;   // The type of entries in each column; these are essentially pairs of form `(row_index, coefficient)`
+    type Row                    =     OnlyIndicesInsideCollection< Matrix::Row,        ColumnIndicesToInclude >;           // What you get when you ask for a row.
+    type RowReverse             =     OnlyIndicesInsideCollection< Matrix::RowReverse, ColumnIndicesToInclude >;    // What you get when you ask for a row with the order of entries reversed
+    type Column                 =     Matrix::Column;        // What you get when you ask for a column
+    type ColumnReverse          =     Matrix::ColumnReverse; // What you get when you ask for a column with the order of entries reversed                             
 
-    fn view_major_ascend( &self, keymaj: Self::RowIndex ) 
-        -> 
-        Self::ViewMajorAscend
-    { 
-        OnlyIndicesInsideCollection::new( self.matrix.view_major_ascend(keymaj).into_iter(), self.keymins_to_include  ) 
-    }
+
+    fn row(                     &   self, index: &Self::RowIndex   )   -> Self::Row
+        { OnlyIndicesInsideCollection::new( self.matrix.row(index), self.column_indices_to_include  )  }        
+    fn row_reverse(             &   self, index: &Self::RowIndex   )   -> Self::RowReverse
+        { OnlyIndicesInsideCollection::new( self.matrix.row_reverse(index), self.column_indices_to_include  )  }    
+    fn column(                  &   self, index: & Self::ColumnIndex)   -> Self::Column
+        { self.matrix.column(index) }    
+    fn column_reverse(          &   self, index: & Self::ColumnIndex)   -> Self::ColumnReverse
+        { self.matrix.column_reverse(index) }
+
+    fn has_row_for_index(     &   self, index: &Self::RowIndex   )   -> bool
+        { self.matrix.has_row_for_index(index) }
+    fn has_column_for_index(  &   self, index: & Self::ColumnIndex)   -> bool
+        { 
+            let matrix_has_column = self.matrix.has_column_for_index(index);
+            let column_is_included = self.column_indices_to_include.map_has_key_or_sequence_has_element(index);
+            return matrix_has_column && column_is_included
+        }    
+    fn structural_nonzero_entry(                   &   self, row:   & Self::RowIndex, column: & Self::ColumnIndex ) ->  Option< Self::Coefficient >
+        { self.matrix.structural_nonzero_entry( row, column ) }
+
 }
 
 
-// ViewMajor
-impl < Matrix, KeyMinToInclude, >
+// Implement MatrixAlgebra
+impl < Matrix, ColumnIndicesToExclude >
 
-    ViewRow for  
+    MatrixAlgebra for  
 
-    OnlyKeyMinInsideCollection
-        < Matrix, KeyMinToInclude, >
+    OnlyColumnIndicesInsideCollection
+        < Matrix, ColumnIndicesToExclude >
 
     where
-        Matrix:                     ViewRow + IndicesAndCoefficients,    
-        Matrix::ViewMajor:          IntoIterator,
-        Matrix::ViewMajorIntoIter:  Iterator,
-        Matrix::EntryMajor:     KeyValGet< Matrix::ColIndex, Matrix::Coefficient >,        
-        KeyMinToInclude:           MapHasKeyOrSequenceHasElement< Self::ColIndex > + Copy,     
+        Matrix:                             MatrixAlgebra,    
+        ColumnIndicesToExclude:             Copy + MapHasKeyOrSequenceHasElement< Matrix::ColumnIndex >,   
 {
-    type ViewMajorIntoIter    =   < Self::ViewMajor as IntoIterator >::IntoIter;
-    type ViewMajor            =   OnlyIndicesInsideCollection< Matrix::ViewMajorIntoIter, KeyMinToInclude, Matrix::ColIndex, Matrix::Coefficient >;  
+    type RingOperator                   =   Matrix::RingOperator;
+    type OrderOperatorForRowEntries     =   Matrix::OrderOperatorForRowEntries;
+    type OrderOperatorForRowIndices     =   Matrix::OrderOperatorForRowIndices;
+    type OrderOperatorForColumnEntries  =   Matrix::OrderOperatorForColumnEntries;
+    type OrderOperatorForColumnIndices  =   Matrix::OrderOperatorForColumnIndices;
 
-    fn view_major( &self, keymaj: Self::RowIndex ) 
-        -> 
-        Self::ViewMajor
-    { 
-        OnlyIndicesInsideCollection::new( self.matrix.view_major(keymaj).into_iter(), self.keymins_to_include  ) 
-    }
+    fn ring_operator( &self ) -> Self::RingOperator { self.matrix.ring_operator() }
+    fn order_operator_for_row_entries( &self ) -> Self::OrderOperatorForRowEntries { self.matrix.order_operator_for_row_entries() }
+    fn order_operator_for_row_indices( &self ) -> Self::OrderOperatorForRowIndices { self.matrix.order_operator_for_row_indices() }    
+    fn order_operator_for_column_entries( &self ) -> Self::OrderOperatorForColumnEntries { self.matrix.order_operator_for_column_entries() }
+    fn order_operator_for_column_indices( &self ) -> Self::OrderOperatorForColumnIndices { self.matrix.order_operator_for_column_indices() }   
 }
 
 
-
-
-//  MAJOR KEYS
+//  ROWS
 //  -----------------------------------------
 
 
-/// A matrix oracle whose major views iterate only over entries that have indices **outside**
+/// A matrix oracle whose rows iterate only over entries that have indices **outside**
 /// a given collection.
-pub struct OnlyKeyMajInsideCollection<
-        Matrix, KeyMajToExclude,
+#[derive(Clone,Copy,Debug,Eq,PartialEq,Ord,PartialOrd)]
+pub struct OnlyRowIndicesInsideCollection<
+        Matrix, RowIndicesToInclude,
     >
     where
-        Matrix:                        IndicesAndCoefficients,    
-        KeyMajToExclude:               MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,                  
+        Matrix:                         MatrixOracle,    
+        RowIndicesToInclude:            MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,                  
 {
-    matrix:                     Matrix,
-    keymajs_to_exclude:         KeyMajToExclude,
+    matrix:                             Matrix,
+    row_indices_to_include:             RowIndicesToInclude,
 }
 
 // implement the object
-impl < Matrix, KeyMajToExclude, >
+impl < Matrix, RowIndicesToInclude, >
 
-    OnlyKeyMajInsideCollection
-        < Matrix, KeyMajToExclude >
+    OnlyRowIndicesInsideCollection
+        < Matrix, RowIndicesToInclude >
 
     where
-        Matrix:                        IndicesAndCoefficients,    
-        KeyMajToExclude:               MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,                          
+        Matrix:                        MatrixOracle,    
+        RowIndicesToInclude:           MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,                          
 
     {
-        /// Create a new `OnlyKeyMajInsideCollection` from a matrix and a collection
-        /// of minor keys.
+        /// Create a new [OnlyRowIndicesInsideCollection] from a matrix and a collection
+        /// of row indices.
         /// 
-        /// In order to operate properly, the collection of minor keys should implement
+        /// In order to operate properly, the collection of row indices should implement
         /// the [`MapHasKeyOrSequenceHasElement`](crate::utilities::sets::MapHasKeyOrSequenceHasElement) 
         /// trait.
-        pub fn new( matrix: Matrix, keymajs_to_exclude: KeyMajToExclude ) 
+        pub fn new( matrix: Matrix, row_indices_to_include: RowIndicesToInclude ) 
         -> 
-        OnlyKeyMajInsideCollection
-            < Matrix, KeyMajToExclude >
+        OnlyRowIndicesInsideCollection
+            < Matrix, RowIndicesToInclude >
         where
-            Matrix:                         IndicesAndCoefficients,    
-            KeyMajToExclude:                MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,              
-        { OnlyKeyMajInsideCollection{ matrix, keymajs_to_exclude, } }
+            RowIndicesToInclude:                MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,              
+        { OnlyRowIndicesInsideCollection{ matrix, row_indices_to_include } }
     }    
 
-// IndicesAndCoefficients
-
-impl < Matrix: IndicesAndCoefficients, KeyMajToExclude >
-
-    IndicesAndCoefficients for  
-
-    OnlyKeyMajInsideCollection
-        < Matrix, KeyMajToExclude >
-
-    where
-        Matrix:                         IndicesAndCoefficients,    
-        KeyMajToExclude:               MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,         
-
-{ 
-    type EntryMinor = Matrix::EntryMinor; 
-    type EntryMajor = Matrix::EntryMajor; 
-    type ColIndex = Matrix::ColIndex; 
-    type RowIndex = Matrix::RowIndex; 
-    type Coefficient = Matrix::Coefficient; }        
 
 
-// ViewMinorDescend
-impl < Matrix, KeyMajToExclude >
+impl < Matrix, RowIndicesToExclude >
 
-    ViewColDescend for  
+    MatrixOracle for  
 
-    OnlyKeyMajInsideCollection
-        < Matrix, KeyMajToExclude >
+    OnlyRowIndicesInsideCollection
+        < Matrix, RowIndicesToExclude >
 
     where
-        Matrix:                                                 ViewColDescend + IndicesAndCoefficients,    
-        Matrix::ViewMinorDescend:                                IntoIterator,
-        Matrix::EntryMinor:                           KeyValGet< Matrix::RowIndex, Matrix::Coefficient >,
-        KeyMajToExclude:                                       Copy + MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,  
-        Matrix::ViewMinorDescendIntoIter:                        Iterator,      
+        Matrix:                          MatrixOracle,    
+        RowIndicesToExclude:             Copy + MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,    
 {
-    type ViewMinorDescendIntoIter    =   < Self::ViewMinorDescend as IntoIterator >::IntoIter;
-    type ViewMinorDescend            =   OnlyIndicesInsideCollection< Matrix::ViewMinorDescendIntoIter, KeyMajToExclude, Self::RowIndex, Self::Coefficient >;  
-    
-    fn view_minor_descend( &self, keymin: Self::ColIndex) 
-        -> 
-        OnlyIndicesInsideCollection< Matrix::ViewMinorDescendIntoIter, KeyMajToExclude, Matrix::RowIndex, Matrix::Coefficient >  
-    { 
-        OnlyIndicesInsideCollection::new( self.matrix.view_minor_descend(keymin).into_iter(), self.keymajs_to_exclude  ) 
-    }
-}
+    type Coefficient            =     Matrix::Coefficient;   // The type of coefficient stored in each entry of the matrix    
+    type RowIndex               =     Matrix::RowIndex;      // The type key used to look up rows.  Matrices can have rows indexed by anything: integers, simplices, strings, etc.
+    type ColumnIndex            =     Matrix::ColumnIndex;   // The type of column indices    
+    type RowEntry               =     Matrix::RowEntry;      // The type of entries in each row; these are essentially pairs of form `(column_index, coefficient)`
+    type ColumnEntry            =     Matrix::ColumnEntry;   // The type of entries in each column; these are essentially pairs of form `(row_index, coefficient)`
+    type Row                    =     Matrix::Row;           // What you get when you ask for a row.
+    type RowReverse             =     Matrix::RowReverse;    // What you get when you ask for a row with the order of entries reversed
+    type Column                 =     OnlyIndicesInsideCollection< Matrix::Column,        RowIndicesToExclude >;        // What you get when you ask for a column
+    type ColumnReverse          =     OnlyIndicesInsideCollection< Matrix::ColumnReverse, RowIndicesToExclude >; // What you get when you ask for a column with the order of entries reversed                             
 
-// ViewMajor
-impl < Matrix, KeyMajToExclude >
 
-    ViewCol for  
+    fn row(                     &   self, index: &Self::RowIndex   )   -> Self::Row
+        { self.matrix.row(index) }    
+    fn row_reverse(             &   self, index: &Self::RowIndex   )   -> Self::RowReverse
+        { self.matrix.row_reverse(index) }
+    fn column(                  &   self, index: & Self::ColumnIndex)   -> Self::Column
+        { OnlyIndicesInsideCollection::new( self.matrix.column(index), self.row_indices_to_include  )  }        
+    fn column_reverse(          &   self, index: & Self::ColumnIndex)   -> Self::ColumnReverse
+        { OnlyIndicesInsideCollection::new( self.matrix.column_reverse(index), self.row_indices_to_include  )  }    
 
-    OnlyKeyMajInsideCollection
-        < Matrix, KeyMajToExclude >
+    fn has_row_for_index(     &   self, index: &Self::RowIndex   )   -> bool
+        { 
+            let matrix_has_row = self.matrix.has_row_for_index(index);
+            let row_is_included = self.row_indices_to_include.map_has_key_or_sequence_has_element(index);
+            return matrix_has_row && row_is_included
+        }    
+    fn has_column_for_index(  &   self, index: & Self::ColumnIndex)   -> bool
+        { self.matrix.has_column_for_index(index) }    
+    fn structural_nonzero_entry(                   &   self, row:   & Self::RowIndex, column: & Self::ColumnIndex ) ->  Option< Self::Coefficient >
+        { self.matrix.structural_nonzero_entry( row, column ) }
+
+}    
+
+
+
+
+// Implement MatrixAlgebra
+impl < Matrix, RowIndicesToExclude >
+
+    MatrixAlgebra for  
+
+    OnlyRowIndicesInsideCollection
+        < Matrix, RowIndicesToExclude >
 
     where
-        Matrix:                                           ViewCol + IndicesAndCoefficients,    
-        Matrix::ViewMinor:                                IntoIterator,
-        Matrix::EntryMinor:                           KeyValGet< Matrix::RowIndex, Matrix::Coefficient >,
-        KeyMajToExclude:                                 Copy + MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,  
-        Matrix::ViewMinorIntoIter:                        Iterator,      
+        Matrix:                         MatrixAlgebra,    
+        RowIndicesToExclude:            Copy + MapHasKeyOrSequenceHasElement< Matrix::RowIndex >,    
 {
-    type ViewMinorIntoIter    =   < Self::ViewMinor as IntoIterator >::IntoIter;
-    type ViewMinor            =   OnlyIndicesInsideCollection< Matrix::ViewMinorIntoIter, KeyMajToExclude, Self::RowIndex, Self::Coefficient >;  
+    type RingOperator                   =   Matrix::RingOperator;
+    type OrderOperatorForRowEntries     =   Matrix::OrderOperatorForRowEntries;
+    type OrderOperatorForRowIndices     =   Matrix::OrderOperatorForRowIndices;
+    type OrderOperatorForColumnEntries  =   Matrix::OrderOperatorForColumnEntries;
+    type OrderOperatorForColumnIndices  =   Matrix::OrderOperatorForColumnIndices;
 
-    fn view_minor( &self, keymin: Self::ColIndex) -> Self::ViewMinor
-    { 
-        OnlyIndicesInsideCollection::new( self.matrix.view_minor(keymin).into_iter(), self.keymajs_to_exclude  ) 
-    }
+    fn ring_operator( &self ) -> Self::RingOperator { self.matrix.ring_operator() }
+    fn order_operator_for_row_entries( &self ) -> Self::OrderOperatorForRowEntries { self.matrix.order_operator_for_row_entries() }
+    fn order_operator_for_row_indices( &self ) -> Self::OrderOperatorForRowIndices { self.matrix.order_operator_for_row_indices() }    
+    fn order_operator_for_column_entries( &self ) -> Self::OrderOperatorForColumnEntries { self.matrix.order_operator_for_column_entries() }
+    fn order_operator_for_column_indices( &self ) -> Self::OrderOperatorForColumnIndices { self.matrix.order_operator_for_column_indices() }   
 }
-
-
-
-
-
-
 
 
 
@@ -698,40 +649,6 @@ impl < Matrix, KeyMajToExclude >
 mod doc_test_drafts {
 
 
-    // Entry-wise clone
-    // =====================================================================================================================
-    
-    #[test] 
-    fn test_entrywise_clone() {
-
-        // import crates
-        use crate::algebra::matrices::operations::transform_vector_wise::VecWiseTransformed;        
-        use crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
-        use crate::algebra::matrices::query::ViewRowAscend;
-        use std::iter::Cloned;
-        use std::slice::Iter;
-        use itertools::Itertools;
-
-        // define a function that doubles the second entry in a tuple
-        fn double_coefficient( pair: (usize, usize) ) -> (usize, usize) { ( pair.0, 2 * pair.1) } 
-        fn vector_transformer( iter: Cloned< Iter< '_, (usize,usize) > > ) -> Vec< (usize, usize) > { 
-            iter
-            .map(double_coefficient )
-            .collect_vec() 
-        }
-
-        // define the untransformed matrix
-        let matrix_untransformed    =   VecOfVec::new( vec![ vec![ (0,1) ] ] );  
-        let matrix_untransformed_ref    =   & matrix_untransformed;   // a reference is required to implement the oracle trait   
-            
-        // define the transformed matrix
-        let matrix_transformed      =   VecWiseTransformed::new( 
-                                                matrix_untransformed_ref,
-                                                vector_transformer,
-                                            );
-        let transformed_vector      =   ( matrix_transformed ).view_major_ascend( 0 ).into_iter().collect_vec();
-        assert_eq!( transformed_vector, vec![ (0,2) ] )
-    }
 
 } 
 

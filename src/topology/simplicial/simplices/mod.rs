@@ -1,6 +1,6 @@
 //! Data structures representing simplices
 
 
-pub mod filtered;
-pub mod unfiltered;
+pub mod weighted;
+pub mod unweighted;
 pub mod vector;

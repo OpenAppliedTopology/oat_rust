@@ -4,8 +4,8 @@
 
 use itertools::Itertools;
 
-use crate::algebra::matrices::query::{IndicesAndCoefficients, ViewRowAscend, ViewRowDescend, ViewColAscend, ViewColDescend};
-use crate::algebra::rings::operator_traits::{Semiring, Ring};
+use crate::algebra::matrices::query::MatrixOracle;
+use crate::algebra::rings::traits::{Semiring, Ring};
 use crate::utilities::iterators::general::IntersectOrderedIteratorsUnsafe;
 
 use std::collections::HashSet;
@@ -20,14 +20,14 @@ use crate::topology::simplicial_complex::boundary::{SimplexBoundaryAscend, Simpl
 
 
 
-// pub struct FlagComplexSimplexIterAscend{ 
+// pub struct FlagComplexAgileSimplexIteratorLexicographicOrderAscend{ 
 //     proximity_matrix:   & Vec<HashSet<usize>>,
 //     cardinality:        usize,
 //     current_face:       Vec<usize>,
 // }
 
 // impl    Iterator for 
-//         FlagComplexSimplexIterAscend {
+//         FlagComplexAgileSimplexIteratorLexicographicOrderAscend {
 
 //     type Item = Vec< usize >;
 
@@ -60,20 +60,20 @@ use crate::topology::simplicial_complex::boundary::{SimplexBoundaryAscend, Simpl
 /// # Examples
 /// 
 /// ```
-/// use oat_rust::topology::simplicial::from::relation::CoboundaryDowkerDescend;
-/// use oat_rust::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;
+/// use oat_rust::topology::simplicial::from::relation::DowkerBoundaryMatrixRowReverse;
+/// use oat_rust::algebra::rings::types::field_prime_order::PrimeOrderField;
 /// use std::collections::HashSet;
 /// use std::iter::FromIterator;
 /// 
-/// let ring_operator = PrimeOrderFieldOperator::new(3);
+/// let ring_operator = PrimeOrderField::new(3);
 /// let simplex = vec![1,3];
 /// let dowker_simplices = vec![ HashSet::from_iter( vec![0,1,2,3,4] ) ];
-/// let coboundary = CoboundaryDowkerDescend::from_proximity_matrix( simplex, &dowker_simplices, ring_operator );
+/// let coboundary = DowkerBoundaryMatrixRowReverse::from_proximity_matrix( simplex, &dowker_simplices, ring_operator );
 /// 
 /// itertools::assert_equal( coboundary, vec![ (vec![1,3,4], 1), (vec![1,2,3], 2), (vec![0,1,3], 1) ]);
 /// ```
 #[derive(Clone, Debug)]
-pub struct CoboundaryDowkerDescend< Vertex, RingOperator, RingElement >
+pub struct DowkerBoundaryMatrixRowReverse< Vertex, RingOperator, RingElement >
     where 
         RingOperator:       Semiring< RingElement > + Ring< RingElement >,
         RingElement:        Clone,
@@ -90,7 +90,7 @@ pub struct CoboundaryDowkerDescend< Vertex, RingOperator, RingElement >
 
 impl < RingOperator, RingElement >
 
-CoboundaryDowkerDescend
+DowkerBoundaryMatrixRowReverse
         < usize, RingOperator, RingElement >
 
     where 
@@ -98,7 +98,7 @@ CoboundaryDowkerDescend
         RingElement:        Clone,
         // Vertex:             Clone + Hash + Ord,
 {
-    /// Generates a [CoboundaryDowkerAscend] for a simplex, given a CSR representation of the binary dowker matrix.    
+    /// Generates a [DowkerBoundaryMatrixRow] for a simplex, given a CSR representation of the binary dowker matrix.    
     pub fn from_proximity_matrix( facet: Vec< usize >, proximity_matrix: &Vec< Vec< usize > >, ring_operator: RingOperator ) -> Self {
 
         println!("NOTE: we assume that the proximity graph is just a sparsity pattern and DOES NOT CONTAIN the diagonal");
@@ -109,7 +109,7 @@ CoboundaryDowkerDescend
         //  ---------------------------------------------
         if facet.is_empty() {
             // this iterator will be identified as empty, because `vertices_to_insert` is empty
-            return CoboundaryDowkerDescend{
+            return DowkerBoundaryMatrixRowReverse{
                 next_cofacet_opt:           None,
                 next_coefficient:           RingOperator::one(),   // these are arbitrary values            
                 vertices_to_insert:         vec![],                // these are arbitrary values  
@@ -130,7 +130,7 @@ CoboundaryDowkerDescend
         //  ---------------------------------------------
         if vertices_to_insert.is_empty() {
             // this iterator is empty, because `next_cofacet_opt` is None
-            return CoboundaryDowkerDescend{
+            return DowkerBoundaryMatrixRowReverse{
                 next_cofacet_opt:           None,
                 next_coefficient:           RingOperator::one(),     // these are abitrary values            
                 vertices_to_insert:         vec![],                  // these are abitrary values  
@@ -157,7 +157,7 @@ CoboundaryDowkerDescend
         }
         next_cofacet.insert( insertion_locus, inserted_vertex );
 
-        CoboundaryDowkerDescend{
+        DowkerBoundaryMatrixRowReverse{
             next_cofacet_opt:           Some( next_cofacet ),
             next_coefficient:           coefficient,
             vertices_to_insert:         vertices_to_insert,         // should be sorted in ascending order
@@ -168,7 +168,7 @@ CoboundaryDowkerDescend
 
     }
 
-    // /// Generates a [CoboundaryDowkerAscend] for a simplex, given CSR and CSC representations of the binary dowker matrix.
+    // /// Generates a [DowkerBoundaryMatrixRow] for a simplex, given CSR and CSC representations of the binary dowker matrix.
     // fn from_csr_and_csc_matrices( facet: Vec< usize >, dowker_matrix_csr: Vec< HashSet< usize > >, dowker_matrix_csc: Vec< HashSet< usize > > ) {        
     // }
 }
@@ -178,7 +178,7 @@ impl < Vertex, RingOperator, RingElement >
 
     Iterator for
 
-    CoboundaryDowkerDescend
+    DowkerBoundaryMatrixRowReverse
         < Vertex, RingOperator, RingElement >
 
     where 
@@ -241,20 +241,20 @@ impl < Vertex, RingOperator, RingElement >
 /// # Examples
 /// 
 /// ```
-/// use oat_rust::simplicial::from::relation::CoboundaryDowkerAscend;
-/// use oat_rust::algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator;
+/// use oat_rust::simplicial::from::relation::DowkerBoundaryMatrixRow;
+/// use oat_rust::algebra::rings::types::field_prime_order::PrimeOrderField;
 /// use std::collections::HashSet;
 /// use std::iter::FromIterator;
 /// 
-/// let ring_operator = PrimeOrderFieldOperator::new(3);
+/// let ring_operator = PrimeOrderField::new(3);
 /// let simplex = vec![1,3];
 /// let dowker_simplices = vec![ HashSet::from_iter( vec![0,1,2,3,4] ) ];
-/// let coboundary = CoboundaryDowkerAscend::from_proximity_matrix( simplex, &dowker_simplices, ring_operator );
+/// let coboundary = DowkerBoundaryMatrixRow::from_proximity_matrix( simplex, &dowker_simplices, ring_operator );
 /// 
 /// itertools::assert_equal( coboundary, vec![ (vec![0,1,3], 1), (vec![1,2,3], 2), (vec![1,3,4], 1) ]);
 /// ```
 #[derive(Clone, Debug)]
-pub struct CoboundaryDowkerAscend< Vertex, RingOperator, RingElement >
+pub struct DowkerBoundaryMatrixRow< Vertex, RingOperator, RingElement >
     where 
         RingOperator:       Semiring< RingElement > + Ring< RingElement >,
         RingElement:        Clone,
@@ -271,21 +271,21 @@ pub struct CoboundaryDowkerAscend< Vertex, RingOperator, RingElement >
 
 impl < RingOperator, RingElement >
 
-    CoboundaryDowkerAscend
+    DowkerBoundaryMatrixRow
         < usize, RingOperator, RingElement >
 
     where 
         RingOperator:       Semiring< RingElement > + Ring< RingElement >,
         RingElement:        Clone,
 {
-    /// Generates a [CoboundaryDowkerAscend] for a simplex, given a CSR representation of the binary dowker matrix.    
+    /// Generates a [DowkerBoundaryMatrixRow] for a simplex, given a CSR representation of the binary dowker matrix.    
     pub fn from_proximity_matrix( facet: Vec< usize >, proximity_matrix: &Vec< Vec< usize > >, ring_operator: RingOperator ) -> Self {
 
         //  the coboundary of the empty simplex is zero;
         //  ---------------------------------------------
         if facet.is_empty() {
             // this iterator will be identified as empty, because `vertices_to_insert` is empty
-            return CoboundaryDowkerAscend{
+            return DowkerBoundaryMatrixRow{
                 next_cofacet_opt:           None,
                 next_coefficient:           RingOperator::one(),   // these are arbitrary values            
                 vertices_to_insert:         vec![],                // these are arbitrary values  
@@ -305,7 +305,7 @@ impl < RingOperator, RingElement >
         //  ---------------------------------------------
         if vertices_to_insert.is_empty() {
             // this iterator is empty, because `vertices_to_insert` is empty
-            return CoboundaryDowkerAscend{
+            return DowkerBoundaryMatrixRow{
                 next_cofacet_opt:           None,
                 next_coefficient:           RingOperator::one(),
                 vertices_to_insert:         vec![],     
@@ -332,7 +332,7 @@ impl < RingOperator, RingElement >
         }
         next_cofacet.insert( insertion_locus, inserted_vertex );
 
-        CoboundaryDowkerAscend{
+        DowkerBoundaryMatrixRow{
             next_cofacet_opt:           Some( next_cofacet ),
             next_coefficient:           coefficient,
             vertices_to_insert:         vertices_to_insert,         // should be sorted in ascending order
@@ -343,7 +343,7 @@ impl < RingOperator, RingElement >
 
     }
 
-    // /// Generates a [CoboundaryDowkerAscend] for a simplex, given CSR and CSC representations of the binary dowker matrix.
+    // /// Generates a [DowkerBoundaryMatrixRow] for a simplex, given CSR and CSC representations of the binary dowker matrix.
     // fn from_csr_and_csc_matrices( facet: Vec< usize >, dowker_matrix_csr: Vec< HashSet< usize > >, dowker_matrix_csc: Vec< HashSet< usize > > ) {        
     // }
 }
@@ -353,7 +353,7 @@ impl < Vertex, RingOperator, RingElement >
 
     Iterator for
 
-    CoboundaryDowkerAscend
+    DowkerBoundaryMatrixRow
         < Vertex, RingOperator, RingElement >
 
     where 
@@ -464,7 +464,7 @@ impl < Vertex, RingOperator, RingElement >
         RingOperator:       Semiring< RingElement > + Ring< RingElement >,
         RingElement:        Clone,
 {
-    type RowIndex = Vec< Vertex >; type ColIndex = Vec< Vertex >; type Coefficient = RingElement;
+    type RowIndex = Vec< Vertex >; type ColumnIndex = Vec< Vertex >; type Coefficient = RingElement;
 }
 
 
@@ -473,7 +473,7 @@ impl < Vertex, RingOperator, RingElement >
 
 impl < RingOperator, RingElement >
     
-    ViewRowAscend for
+    MatrixOracle for
 
     FlagComplexBoundaryMatrixRowMajor
         < usize, RingOperator, RingElement >
@@ -483,12 +483,12 @@ impl < RingOperator, RingElement >
         RingOperator:       Clone + Semiring< RingElement > + Ring< RingElement >,
         RingElement:        Clone,
 {
-    type ViewMajorAscend            =   CoboundaryDowkerAscend< usize, RingOperator, RingElement >;
-    type ViewMajorAscendIntoIter    =   Self::ViewMajorAscend;
-    type EntryMajor =   ( Self::RowIndex, Self::Coefficient );
+    type Row            =   DowkerBoundaryMatrixRow< usize, RingOperator, RingElement >;
+    type RowIntoIter    =   Self::Row;
+    type RowEntry =   ( Self::RowIndex, Self::Coefficient );
 
-    fn view_major_ascend( &self, keymaj: Self::RowIndex ) -> Self::ViewMajorAscend {
-        CoboundaryDowkerAscend::from_proximity_matrix( keymaj, & self.proximity_matrix, self.ring_operator.clone() )
+    fn row( &self, row_index: Self::RowIndex ) -> Self::Row {
+        DowkerBoundaryMatrixRow::from_proximity_matrix( row_index, & self.proximity_matrix, self.ring_operator.clone() )
     }
 }
 
@@ -507,12 +507,14 @@ ViewRowDescend for
         RingOperator:       Clone + Semiring< RingElement > + Ring< RingElement >,
         RingElement:        Clone,
 {
-    type ViewMajorDescend           =   CoboundaryDowkerDescend< usize, RingOperator, RingElement >;
-    type ViewMajorDescendIntoIter   =   Self::ViewMajorDescend;
-    type EntryMajor      =   ( Self::RowIndex, Self::Coefficient );
+    type RowReverse           =   DowkerBoundaryMatrixRowReverse< usize, RingOperator, RingElement >;
+    type RowReverseIntoIter   =   Self::RowReverse;
+    type RowEntry      =   ( Self::RowIndex, Self::Coefficient );
 
-    fn view_major_descend( &self, keymaj: Self::RowIndex ) -> Self::ViewMajorDescend {
-        CoboundaryDowkerDescend::from_proximity_matrix( keymaj, & self.proximity_matrix, self.ring_operator.clone() )
+    fn row_reverse( &self, row_index: Self::RowIndex ) -> Self::RowReverse {
+
+        println!("GOT THROUGH THIS FILE ANE REMOVE THE DEBUG REQUIREMENTS");
+        DowkerBoundaryMatrixRowReverse::from_proximity_matrix( row_index, & self.proximity_matrix, self.ring_operator.clone() )
     }
 }
 
@@ -533,12 +535,12 @@ impl < Vertex, RingOperator, RingElement >
         RingOperator:       Clone + Semiring< RingElement > + Ring< RingElement >,
         RingElement:        Clone,
 {
-    type ViewMinorAscend            =   SimplexBoundaryAscend< Vertex, RingOperator, RingElement >;
-    type ViewMinorAscendIntoIter    =   Self::ViewMinorAscend;
-    type EntryMinor       =   ( Self::RowIndex, Self::Coefficient );
+    type Column            =   SimplexBoundaryAscend< Vertex, RingOperator, RingElement >;
+    type ColumnIntoIter    =   Self::Column;
+    type ColumnEntry       =   ( Self::RowIndex, Self::Coefficient );
 
-    fn view_minor_ascend( &self, keymaj: Self::RowIndex ) -> Self::ViewMinorAscend {
-        SimplexBoundaryAscend::new( keymaj, self.ring_operator.clone() )
+    fn row( &self, row_index: Self::RowIndex ) -> Self::Column {
+        SimplexBoundaryAscend::new( row_index, self.ring_operator.clone() )
     }
 }
 
@@ -547,7 +549,7 @@ impl < Vertex, RingOperator, RingElement >
 
 impl < Vertex, RingOperator, RingElement >
     
-    ViewColDescend for
+    MatrixOracle for
 
     FlagComplexBoundaryMatrixRowMajor
         < Vertex, RingOperator, RingElement >
@@ -557,12 +559,12 @@ impl < Vertex, RingOperator, RingElement >
         RingOperator:       Clone + Semiring< RingElement > + Ring< RingElement >,
         RingElement:        Clone,
 {
-    type ViewMinorDescend           =   SimplexBoundaryDescend< Vertex, RingOperator, RingElement >;
-    type ViewMinorDescendIntoIter   =   Self::ViewMinorDescend;
-    type EntryMinor      =   ( Self::RowIndex, Self::Coefficient );
+    type ColumnReverse           =   SimplexBoundaryDescend< Vertex, RingOperator, RingElement >;
+    type ColumnReverseIntoIter   =   Self::ColumnReverse;
+    type ColumnEntry      =   ( Self::RowIndex, Self::Coefficient );
 
-    fn view_minor_descend( &self, keymaj: Self::RowIndex ) -> Self::ViewMinorDescend {
-        SimplexBoundaryDescend::new( keymaj, self.ring_operator.clone() )
+    fn column_reverse( &self, row_index: Self::RowIndex ) -> Self::ColumnReverse {
+        SimplexBoundaryDescend::new( row_index, self.ring_operator.clone() )
     }
 }
 

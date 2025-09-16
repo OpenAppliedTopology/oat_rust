@@ -5,13 +5,22 @@ use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use rand::Rng;
 
+use crate::utilities::sequences_and_ordinals::SortedVec;
+
 
 
 /// A sequence of combinations sampled with given probability.
 /// 
-/// For `k` in `cardinalities` we generate the sequence of all cardinality-`k` subsets of  `{0.. size_ambient_set}`, in lexicographic order.
-/// Each element of the outer sequence is pushed to a storage vector with probability `probability`.  The storage vector is returned, when done.
-pub fn rand_sequences< T: Iterator<Item=usize> >( size_ambient_set: usize, cardinalities: T, probability: f64 ) -> Vec< Vec< usize > > 
+/// We initialize an empty vector `v`.
+/// For each `k` in `cardinalities` we generate the sequence of all cardinality-`k` subsets of  `{0.. size_of_ambient_set}`, in lexicographic order.
+/// Subsets are represented as sorted vectors.
+/// For each subset `s`, we push `s` into `v` with probability `probability`.
+/// The vector `v` is returned to the user when this process terminates.
+pub fn random_sequences< T: Iterator<Item=usize> >( 
+        size_of_ambient_set: usize, 
+        cardinalities: T, 
+        probability: f64 
+    ) -> Vec< SortedVec< usize > > 
 {
     use rand::distributions::{Bernoulli, Distribution};
 
@@ -20,9 +29,9 @@ pub fn rand_sequences< T: Iterator<Item=usize> >( size_ambient_set: usize, cardi
     
     let mut combinations    =   vec![];
     for cardinality in cardinalities {
-        for combo in (0 .. size_ambient_set ).combinations( cardinality ) {
+        for combo in (0 .. size_of_ambient_set ).combinations( cardinality ) {
             if d.sample(&mut rng) {
-                combinations.push( combo )
+                combinations.push( SortedVec::new(combo).ok().unwrap() )
             }
         }
     }  

@@ -20,10 +20,11 @@
 //!                 y and x are unconstrained continuous variables
 //! ```
 
-use good_lp::{SolverModel, Solution, minilp, Expression, Variable, ProblemVariables};
+use good_lp::{SolverModel, Solution, Expression, Variable, ProblemVariables, default_solver};
 
 use itertools::Itertools;
 use num::ToPrimitive;
+use sprs::linalg::ordering::start;
 
 use crate::algebra::vectors::entries::{KeyValGet};
 
@@ -58,11 +59,13 @@ use derive_new::new;
 /// The struct has methods to return `b`, `x`, `y`, as well as the objective values `cost(b) = c'|b|` and `cost(y) = c`|y|`.
 #[derive(new,Clone,Debug,Getters,Dissolve)]
 pub struct SolutionL1< Key, Coefficient >{
-    x:          Vec< (Key, f64) >,    
-    b:          Vec< (Key, Coefficient) >,
-    y:          Vec< (Key, f64) >,
-    cost_b:     f64,
-    cost_y:     f64,
+    pub x:                  Vec< (Key, f64) >,    
+    pub b:                  Vec< (Key, Coefficient) >,
+    pub y:                  Vec< (Key, f64) >,
+    pub cost_b:             f64,
+    pub cost_y:             f64,
+    pub construction_time:  f64, // time it took to construct the problem
+    pub solve_time:         f64, // time it took to solve the problem
 }
 
 
@@ -89,9 +92,10 @@ pub struct SolutionL1< Key, Coefficient >{
 /// Arguments:
 /// 
 /// - `a`: function that consumes `k` and returns the `k`th column  of `A`; order of entries does not matter
-/// - `b`: the vector `b`, represented as an iterator over the nonzero entries; entries can by any type that implements `KeyValGet< Key, Coefficient >`, where `Coefficient` implements `ToPrimitive`; order does not matter, but $b$ should contain no repeat entries
+/// - `b`: the vector `b`, represented as an iterator over the nonzero entries; entries can by any type that implements `KeyValGet< Key = Key, Val = Coefficient >`, where `Coefficient` implements `ToPrimitive`; order does not matter, but $b$ should contain no repeat entries
 /// - `c`: the vector `c`, represented as a function that consumes `i` and returns `c[i]`.  We require the coefficients of `c` to be nonnegative.
 /// - `column_indices`: iterator that runs over the column indices of `A`; order does not matter
+/// - `verbose`: if true, then print the progress of the optimization
 ///
 /// Returns:
 /// 
@@ -111,8 +115,9 @@ pub struct SolutionL1< Key, Coefficient >{
 /// let b = vec![ (0usize,2f64), (1usize,2f64) ]; // the vector [2, 2]
 /// let c = |x: & usize| -> f64 { 1.0 }; // the vector [1, 1]
 /// let column_indices = vec![0];        
+/// let verbose = false;
 /// 
-/// let solution = minimize_l1( a.clone(),b.clone(),c.clone(), column_indices).unwrap();
+/// let solution = minimize_l1( a.clone(),b.clone(),c.clone(), column_indices, verbose).unwrap();
 /// 
 /// println!("{:?}", solution);
 /// assert_eq!( solution.x(), &vec![(0,-2.0)] );
@@ -135,9 +140,10 @@ pub struct SolutionL1< Key, Coefficient >{
 /// let a = |i: & usize | -> Vec<(usize,f64)> { constraint_data[*i].clone() };
 /// let b = vec![ (0,1.), (1,1.), ];
 /// let c = |x: & usize| -> f64 { 1.0 };
-/// let column_indices = vec![0];        
+/// let column_indices = vec![0];      
+/// let verbose = false;  
 /// 
-/// let solution = minimize_l1( a.clone(),b.clone(),c.clone(), column_indices).unwrap();
+/// let solution = minimize_l1( a.clone(),b.clone(),c.clone(), column_indices, verbose).unwrap();
 /// 
 /// println!("{:?}", solution);
 /// assert_eq!( solution.x(), &vec![(0,-1.0)] );
@@ -150,27 +156,32 @@ pub fn minimize_l1<
             Key,
             ConstraintMatrix,
             ConstraintVector, 
+            BoundVector,
             ColumnIndexIterable,            
             CostVector,
             Coefficient,
         >
     ( 
         mut a:                      ConstraintMatrix,
-        b:                          ConstraintVector,        
+        b:                          BoundVector,        
         mut c:                      CostVector,
         column_indices:             ColumnIndexIterable,         
+        verbose:                    bool, // if true, then print the progress of the optimization
     ) 
     -> 
     Result< SolutionL1<Key, Coefficient>, String >
     where
         ConstraintMatrix:           FnMut( & Key )->ConstraintVector,
-        ConstraintVector:           IntoIterator,
-        ConstraintVector::Item:     KeyValGet< Key, Coefficient >,
-        Coefficient:                     Clone + ToPrimitive, // enables casting to f64
-        Key:                        Clone + Debug + Hash + std::cmp::Eq, // required for the hashing performed by the generalized matching array   // !!!! try deleting debug
+        ConstraintVector:           IntoIterator,        
+        ConstraintVector::Item:     KeyValGet < Key = Key, Val = Coefficient >,
+        BoundVector:                IntoIterator,        
+        BoundVector::Item:          KeyValGet < Key = Key, Val = Coefficient >,        
+        Coefficient:                Clone + ToPrimitive, // enables casting to f64
+        Key:                        Clone + Debug + Hash + std::cmp::Eq, // required for the hashing performed by the generalized matching array 
         ColumnIndexIterable:        Clone + IntoIterator< Item = Key >, 
         CostVector:                 FnMut( & Key) -> f64,                      
 {
+    let start = std::time::Instant::now();
 
     //  holds information about the variables
     let mut variables                       =   ProblemVariables::new();
@@ -251,7 +262,7 @@ pub fn minimize_l1<
     // form the model
     let mut problem     =   variables
                             .minimise( objective.clone() )
-                            .using( minilp );
+                            .using( default_solver );
 
     // add constraints
     for row in key_to_row.values() {
@@ -259,12 +270,30 @@ pub fn minimize_l1<
         problem         =   problem.with( - row.lhs.clone() << row.rhs );
     }
 
-    println!("\nFinished construcing L1 optimization program.\nConstraint matrix has {:?} nonzero entries.\nPassing program to solver.", num_entries);
+
+
+    let construction_duration = start.elapsed();
+    if verbose {        
+        println!("Finished construcing L1 optimization program.");
+        println!("Construction took {:?} seconds.", construction_duration.as_secs_f64());
+        println!("Constraint matrix has {:?} nonzero entries.", num_entries);
+        println!("Passing program to solver.\n");
+    }
+
+
 
     // solve
+    let start = std::time::Instant::now();
+
     let solution        =   problem.solve().unwrap();
 
-    println!("\nDone solving.");
+    let solve_duration = start.elapsed();
+    if verbose {
+        println!("\nFinished solving.\n");
+        println!("Solver took {:?} seconds in walltime.", solve_duration.as_secs_f64());
+
+    }
+
 
     // reformat the solution
     let cost_y          =   solution.eval(objective);
@@ -292,12 +321,20 @@ pub fn minimize_l1<
                                 .collect_vec();
 
 
+    if verbose {
+        println!("GOODLP solution: {:?}", solution.into_inner() );
+    }
 
-    println!("MINILP solution: {:?}", solution.into_inner() );
 
-
-    
-    let answer = SolutionL1{ cost_b, cost_y, b, y, x };
+    let answer = SolutionL1{ 
+        cost_b, 
+        cost_y, 
+        b, 
+        y, 
+        x,
+        construction_time: construction_duration.as_secs_f64(),
+        solve_time: solve_duration.as_secs_f64(),
+    };
     Ok(answer)
 }
 
@@ -346,14 +383,17 @@ pub fn minimize_l1_kernel<
     where
         ConstraintMatrix:               FnMut( & Key )->ConstraintMatrixColumn,
         ConstraintVector:               IntoIterator,
-        ConstraintVector::Item:         KeyValGet< Key, Coefficient >,
+        ConstraintVector::Item:         KeyValGet< Key = Key, Val = Coefficient >,
         ConstraintMatrixColumn:         IntoIterator,
-        ConstraintMatrixColumn::Item:   KeyValGet< Key, Coefficient >,        
+        ConstraintMatrixColumn::Item:   KeyValGet< Key = Key, Val = Coefficient >,        
         Coefficient:                    Clone + ToPrimitive, // enables casting to f64
         Key:                            Clone + Debug + Hash + std::cmp::Eq, // required for the hashing performed by the generalized matching array   // !!!! try deleting debug
         ColumnIndexIterable:            Clone + IntoIterator< Item = Key >, 
         CostVector:                     FnMut( & Key) -> f64,                      
 {
+
+    let start = std::time::Instant::now();
+
 
     //  holds information about the variables
     let mut variables                       =   ProblemVariables::new();
@@ -426,7 +466,7 @@ pub fn minimize_l1_kernel<
     // form the model
     let mut problem     =   variables
                             .minimise( objective.clone() )
-                            .using( minilp );
+                            .using( default_solver );
 
     // add constraints
     for col in key_to_col.values() {
@@ -434,8 +474,16 @@ pub fn minimize_l1_kernel<
         problem         =   problem.with( - col.x_plus_b.clone() << col.y );
     }
 
+
+    let construction_duration = start.elapsed();
+
+
+
     // solve
+    let start = std::time::Instant::now();    
     let solution        =   problem.solve().unwrap();
+    let solve_duration = start.elapsed();
+
 
     // reformat the solution
     let cost_y          =   solution.eval(objective);
@@ -464,7 +512,15 @@ pub fn minimize_l1_kernel<
 
     let b: Vec<(Key, Coefficient)>  =   b.into_iter().collect(); // convert b from hashmap to vec
     
-    let answer = SolutionL1{ cost_b, cost_y, b, y, x };
+    let answer = SolutionL1{ 
+        cost_b, 
+        cost_y, 
+        b, 
+        y, 
+        x,
+        construction_time: construction_duration.as_secs_f64(),
+        solve_time: solve_duration.as_secs_f64(),
+    };
     Ok(answer)
 }
 
@@ -530,9 +586,10 @@ mod tests {
         let a = |i: & usize | -> Vec<(usize,f64)> { constraint_data[*i].clone() }; // the matrix 2x1 matrix [1; 1]
         let b = vec![ (0usize,2f64), (1usize,2f64) ]; // the vector [2, 2]
         let c = |_x: & usize| -> f64 { 1.0 }; // the vector [1, 1]
-        let column_indices = vec![0];        
+        let column_indices = vec![0]; 
+        let verbose = true;       
 
-        let solution = minimize_l1( a,b.clone(),c, column_indices).unwrap();
+        let solution = minimize_l1( a,b.clone(),c, column_indices, verbose).unwrap();
 
         println!("{:?}", solution);
         assert_eq!( solution.x(), &vec![(0,-2.0)] );
@@ -558,8 +615,9 @@ mod tests {
         let b = vec![ (0,1.), (1,1.), ];
         let c = |_x: & usize| -> f64 { 1.0 };
         let column_indices = vec![0];        
+        let verbose = true;
 
-        let solution = minimize_l1( a,b.clone(),c, column_indices).unwrap();
+        let solution = minimize_l1( a,b.clone(),c, column_indices, verbose).unwrap();
 
         println!("{:?}", solution);
         assert_eq!( solution.x(), &vec![(0,-1.0)] );

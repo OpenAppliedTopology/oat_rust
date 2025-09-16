@@ -2,26 +2,26 @@
 
 use std::hash::HashMap;
 
-use oat_rust::algebra::rings::operator_structs::ring_native::FieldRational64;
+use oat_rust::algebra::rings::types::native::FieldRational64;
 use crate::utilities::iterators::general::find_min;
 
 
 
 
 
-// struct OptimizationBase< 'a, Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries > 
+// struct OptimizationBase< 'a, MatrixToFactor > 
 //     where
-//         Mapping:                           ViewRowAscend + IndicesAndCoefficients,
-//         Mapping::ColIndex:                   Clone + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingArrayWithMajorOrdinals` struct
-//         Mapping::RowIndex:                   Clone + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingArrayWithMajorOrdinals` struct
-//         // OrderOperatorByKey<usize, Mapping::Coefficient, (usize, Mapping::Coefficient)>: JudgePartialOrder< (usize, Mapping::Coefficient)>, // this seems extraneous but the compiler seems to want it
-//         Mapping::ViewMajorAscend:          IntoIterator,
-//         Mapping::EntryMajor:     KeyValGet< Mapping::ColIndex, Mapping::Coefficient >,
-//         RingOperator:                           Clone + Semiring< Mapping::Coefficient > + Ring< Mapping::Coefficient > + DivisionRing< Mapping::Coefficient >,
+//         MatrixToFactor:                           MatrixOracle,
+//         MatrixToFactor::ColumnIndex:                   Clone + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingMatrixWithSequentialOrder` struct
+//         MatrixToFactor::RowIndex:                   Clone + Hash + std::cmp::Eq, // required by the `GeneralizedMatchingMatrixWithSequentialOrder` struct
+//         // OrderOperatorByKey<usize, MatrixToFactor::Coefficient, (usize, MatrixToFactor::Coefficient)>: JudgePartialOrder< (usize, MatrixToFactor::Coefficient)>, // this seems extraneous but the compiler seems to want it
+//         MatrixToFactor::Row:          IntoIterator,
+//         MatrixToFactor::RowEntry:     KeyValGet < Key = MatrixToFactor::ColumnIndex, Val = MatrixToFactor::Coefficient >,
+//         RingOperator:                           Clone + Semiring< MatrixToFactor::Coefficient > + Ring< MatrixToFactor::Coefficient > + DivisionRingOperations< MatrixToFactor::Coefficient >,
 
 // {
-//     umatch:                         &'a Umatch<Mapping, RingOperator, OrderOperatorRowEntries, OrderOperatorColEntries >,
-//     order_operator_all_entries:   OrderOperatorRowEntries,   
+//     umatch:                         &'a Umatch<MatrixToFactor, RingOperator, OrderOperatorForRowEntries, OrderOperatorForColumnEntries >,
+//     order_operator_all_entries:   OrderOperatorForRowEntries,   
 //     ring_operator:                  RingOperator,
 // }
 
@@ -29,7 +29,7 @@ type Coeff = Ratio< i64 >;
 
 struct OptimizationBase //< Coeff, RingOperator, > 
     // where
-    //     RingOperator:                           Clone + Semiring< Mapping::Coefficient > + Ring< Mapping::Coefficient > + DivisionRing< Mapping::Coefficient >,
+    //     RingOperator:                           Clone + Semiring< MatrixToFactor::Coefficient > + Ring< MatrixToFactor::Coefficient > + DivisionRingOperations< MatrixToFactor::Coefficient >,
 
 {
     reduced_head:   Vec< Vec< (usize,Coeff) > >,   
@@ -47,7 +47,7 @@ struct OptimizationBase //< Coeff, RingOperator, >
 
 // struct Optimizer< 'a, > // Coeff, RingOperator, > 
 //     // where
-//     //     RingOperator:                           Clone + Semiring< Mapping::Coefficient > + Ring< Mapping::Coefficient > + DivisionRing< Mapping::Coefficient >,
+//     //     RingOperator:                           Clone + Semiring< MatrixToFactor::Coefficient > + Ring< MatrixToFactor::Coefficient > + DivisionRingOperations< MatrixToFactor::Coefficient >,
 
 // {
 //     optimization_base:  &'a OptimizationBase, //< Coeff, RingOperator >,
@@ -71,7 +71,7 @@ struct OptimizationBase //< Coeff, RingOperator, >
 //     Optimizer
 //         // < 'a, Coeff, RingOperator, > 
 //     // where
-//     //     RingOperator:  Clone + Semiring< Mapping::Coefficient > + Ring< Mapping::Coefficient > + DivisionRing< Mapping::Coefficient >,        
+//     //     RingOperator:  Clone + Semiring< MatrixToFactor::Coefficient > + Ring< MatrixToFactor::Coefficient > + DivisionRingOperations< MatrixToFactor::Coefficient >,        
 // {
 //     type Item = ();
 
@@ -94,7 +94,7 @@ struct OptimizationBase //< Coeff, RingOperator, >
 //                 prior_zvalue    =   self.cycle_slice.insert( col_indx, self.cycle_initial.get( row_indx ) ).unwrap(); // update z_I temporarily
 //                 new_seed        =   veca_vecp_index__vecpivoted( &row, &self.cycle_slice );
 //                 _               =   self.cycle_slice.insert( col_indx, prior_zvalue ); // change z_I back                                                            
-//                 difference_new  =   vector_matrix_multiply_major_ascend_simplified( 
+//                 difference_new  =   multiply_row_vector_with_matrix( 
 //                                             new_seed.into_iterator(), 
 //                                             & self.cob_matrix,  
 //                                             ring_operator.clone(),
@@ -170,7 +170,7 @@ struct OptimizationBase //< Coeff, RingOperator, >
 #[allow(non_snake_case)]
 struct Optimizer // Coeff, RingOperator, > 
     // where
-    //     RingOperator:                           Clone + Semiring< Mapping::Coefficient > + Ring< Mapping::Coefficient > + DivisionRing< Mapping::Coefficient >,
+    //     RingOperator:                           Clone + Semiring< MatrixToFactor::Coefficient > + Ring< MatrixToFactor::Coefficient > + DivisionRingOperations< MatrixToFactor::Coefficient >,
 
 {
     A:                  Vec< SparseVecUsize< Coeff > >,
@@ -194,7 +194,7 @@ impl
     Optimizer
         // < 'a, Coeff, RingOperator, > 
     // where
-    //     RingOperator:  Clone + Semiring< Mapping::Coefficient > + Ring< Mapping::Coefficient > + DivisionRing< Mapping::Coefficient >,        
+    //     RingOperator:  Clone + Semiring< MatrixToFactor::Coefficient > + Ring< MatrixToFactor::Coefficient > + DivisionRingOperations< MatrixToFactor::Coefficient >,        
 {
     type Item = ();
 
@@ -207,7 +207,7 @@ impl
 
         // try to perform a pivot        
         let i    = i.unwrap();
-        let Ci   = C.view_minor_descend(i);
+        let Ci   = C.column_reverse(i);
         let score = |(j,sgn)|  {
             constraint_val_plusminus = inner_product( & self.A[j], & self.x );
             cbar =  sgn * ( constraint_val_plusminus - self.c[j] );
@@ -248,7 +248,7 @@ impl
                 prior_zvalue    =   self.cycle_slice.insert( col_indx, self.cycle_initial.get( row_indx ) ).unwrap(); // update z_I temporarily
                 new_seed        =   veca_vecp_index__vecpivoted( &row, &self.cycle_slice );
                 _               =   self.cycle_slice.insert( col_indx, prior_zvalue ); // change z_I back                                                            
-                difference_new  =   vector_matrix_multiply_major_ascend_simplified( 
+                difference_new  =   multiply_row_vector_with_matrix( 
                                             new_seed.into_iterator(), 
                                             & self.cob_matrix,  
                                             ring_operator.clone(),

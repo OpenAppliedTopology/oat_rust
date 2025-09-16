@@ -79,8 +79,8 @@ pub fn simplex_perm_o2n_from_vertex_perm_o2n(
 mod tests {
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
-    use crate::topology::simplicial::simplices::unfiltered::Simplex;
-    use crate::topology::simplicial::simplices::vector::subsimplices_dim_0_thru_d_concatenated;
+    use crate::topology::simplicial::simplices::unweighted::Simplex;
+    use crate::topology::simplicial::simplices::vector::dimension_0_through_d_simplices_in_dimensionwise_lexicographic_order_list;
     use crate::utilities::indexing_and_bijection::{inverse_perm};
     use crate::utilities::sequences_and_ordinals::SortedVec;
     use std::iter::FromIterator;
@@ -97,7 +97,7 @@ mod tests {
 
         let complex_facets          =   vec![  vec![0,1,2], vec![0, 3] ];
         let complex_facets  =   complex_facets.into_iter().map(|x| SortedVec::new(x).unwrap() ).collect();
-        let simplex_sequence_old    =   subsimplices_dim_0_thru_d_concatenated( &complex_facets, 1);   
+        let simplex_sequence_old    =   dimension_0_through_d_simplices_in_dimensionwise_lexicographic_order_list( &complex_facets, 1);   
         let perm_v_o2n              =   vec![0, 1, 3, 2];
 
         let mut simplex_sequence_new =  Vec::from_iter(

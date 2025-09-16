@@ -23,7 +23,7 @@
 //! 
 //! ```
 //! use oat_rust::utilities::order::{OrderOperatorAuto, OrderOperatorAutoReverse};
-//! use crate::oat_rust::utilities::order::JudgePartialOrder;
+//! use oat_rust::utilities::order::JudgePartialOrder;
 //! 
 //! // Define a and b
 //! let a = 0;
@@ -57,7 +57,7 @@
 //! 
 //! # Design notes
 //! 
-//! In many situations [OrderOperatorAuto] is this simplest to use.  [OrderOperatorByKey] is also common for comparing vector entries; it has a smaller type signature than [OrderOperatorByKeyCutsom], but for many operations, e.g. [U-match factorization](crate::algebra::matrices::operations::umatch), the larger signature allows users to pass customized order operators.
+//! In many situations [OrderOperatorAuto] is this simplest to use.  [OrderOperatorByKey] is also common for comparing vector entries; it has a smaller type signature than [OrderOperatorByKeyCustom], but for many operations, e.g. [U-match factorization](crate::algebra::matrices::operations::umatch), the larger signature allows users to pass customized order operators.
 // //! object that "externalizes" that implements traits for
 // //! comparing two elements -- traits such as [`JudgePartialOrder`], [`ComparePartialOrder`], and [`CompareOrder`].
 // //! 
@@ -124,17 +124,88 @@ pub fn is_sorted_strictly < T, OrderOperator, > ( data: &[T], order_operator: & 
 ///  library for `kmerge`.  The OAT developers
 ///  suspect that the trait was introduced in order to supply type information 
 ///  that ordinary closures might miss.  At least, we tried removing the trait
-///  from the HitMerge code we adapted from Itertools, and ran into some type 
+///  from the IteratorsMergedInSortedOrder code we adapted from Itertools, and ran into some type 
 ///  erros at compilation.
+/// 
+/// # Examples
+/// 
+/// For general information about order operators see the documentation page for [order](crate::utilities::order).
+/// 
+/// The following example shows how to implement [JudgePartialOrder] on a new struct in order to make a new order operator.
+/// 
+/// ```
+/// use oat_rust::utilities::order::{JudgeOrder, JudgePartialOrder};
+/// use std::cmp::Ordering;
+/// 
+/// //  Define a new type of struct
+/// //  ---------------------------        
+/// pub struct MyOrderOperator;
+/// 
+/// //  Implement the JudgePartialOrder trait on our new struct
+/// //  -------------------------------------------------------
+/// impl JudgePartialOrder< usize > for MyOrderOperator {
+/// 
+///     // this function should return true iff left >= right
+///     fn judge_ge(&self,left: &usize, right: &usize) -> bool {
+///         left >= right 
+///     }
+///     // this function should return true iff left > right
+///     fn judge_gt(&self,left: &usize, right: &usize) -> bool {
+///         left > right
+///     }
+///     // this function should return true iff left <= right
+///     fn judge_le(&self,left: &usize, right: &usize) -> bool {
+///         left <= right
+///     }
+///     // this function should return true iff left < right
+///     fn judge_lt(&self, left: &usize, right: &usize ) -> bool {
+///         left < right
+///     }
+///     fn judge_partial_cmp( & self, left: & usize, right: & usize )  -> Option<Ordering> {
+///         Some( left.cmp( right ) )
+///     }
+/// }
+/// 
+/// //  Implement the JudgeOrder trait on our new struct
+/// //  ------------------------------------------------
+/// impl JudgeOrder< usize > for MyOrderOperator {
+///     // the judge_clamp function in OAT is modeled off of the clamp function here: https://doc.rust-lang.org/std/cmp/trait.Ord.html
+///     fn judge_clamp(&self, clampee: usize, min: usize, max: usize) -> usize {
+///         clampee.clamp(min,max) // here we just use Rust's built-in clamp function
+///     }
+///     // the judge_cmp function in OAT is modeled off of the clamp function here: https://doc.rust-lang.org/std/cmp/trait.Ord.html            
+///     fn judge_cmp(&self, left: &usize, right: &usize ) -> Ordering {
+///         left.cmp(right)
+///     }
+///     // should return the maximum of left and right
+///     fn judge_max(&self, left: usize, right: usize) -> usize {
+///         left.max(right)
+///     }
+///     // should return the minimum of left and right
+///     fn judge_min(&self, left: usize, right: usize) -> usize {
+///         left.min(right)
+///     }
+/// }
+/// 
+/// //  Use the trait
+/// fn compare_order() {
+///     let a = 1usize;
+///     let b = 2usize;
+///     let order_operator = MyOrderOperator;
+/// 
+///     if order_operator.judge_lt( &a, &b ) { println!("a is strictly less than b") }
+///     else { println!("a is greater than or equal to b")}
+/// }
+/// ```
 pub trait JudgePartialOrder< T > {
     /// Similar to the `.cmp` method in `std::cmp::PartialOrd`
     fn judge_partial_cmp
-        ( & self, lhs: & T, rhs: & T ) 
+        ( & self, left: & T, right: & T ) 
         -> 
         Option<Ordering>;    
     // {
-    //     let is_le = self.le(lhs, rhs);
-    //     let is_ge = self.ge(lhs, rhs);
+    //     let is_le = self.le(left, right);
+    //     let is_ge = self.ge(left, right);
     //     if is_le {
     //         if is_ge { Some( Ordering::Equal ) }
     //         else { Some( Ordering::Less ) }
@@ -144,14 +215,21 @@ pub trait JudgePartialOrder< T > {
     //         else { None }
     //     }
     // }
-    /// Returns true iff lhs < rhs
-    fn judge_lt(&self, lhs: &T, rhs: &T ) -> bool { self.judge_partial_cmp(lhs, rhs) == Some(Ordering::Less) }// { self.le( lhs, rhs ) && ! self.ge( lhs, rhs ) }
-    /// Returns true iff lhs ≤ rhs    
-    fn judge_le(&self,lhs: &T, rhs: &T) -> bool { match self.judge_partial_cmp(lhs,rhs){ Some(Ordering::Less) => true, Some(Ordering::Equal) => true, _ => false } }
-    /// Returns true iff lhs > rhs    
-    fn judge_gt(&self,lhs: &T, rhs: &T) -> bool { self.judge_partial_cmp(lhs, rhs) == Some(Ordering::Greater) } // { self.judge_lt( rhs, lhs ) }
-    /// Returns true iff lhs ≥ rhs    
-    fn judge_ge(&self,lhs: &T, rhs: &T) -> bool { match self.judge_partial_cmp(lhs,rhs){ Some(Ordering::Greater) => true, Some(Ordering::Equal) => true, _ => false } }
+    /// Returns true iff left < right
+    fn judge_lt(&self, left: &T, right: &T ) -> bool { self.judge_partial_cmp(left, right) == Some(Ordering::Less) }// { self.le( left, right ) && ! self.ge( left, right ) }
+    /// Returns true iff left ≤ right    
+    fn judge_le(&self,left: &T, right: &T) -> bool { match self.judge_partial_cmp(left,right){ Some(Ordering::Less) => true, Some(Ordering::Equal) => true, _ => false } }
+    /// Returns true iff left > right    
+    fn judge_gt(&self,left: &T, right: &T) -> bool { self.judge_partial_cmp(left, right) == Some(Ordering::Greater) } // { self.judge_lt( right, left ) }
+    /// Returns true iff left ≥ right    
+    fn judge_ge(&self,left: &T, right: &T) -> bool { match self.judge_partial_cmp(left,right){ Some(Ordering::Greater) => true, Some(Ordering::Equal) => true, _ => false } }
+
+    /// Returns the reverse order operator
+    fn reverse_order_judgements( self ) -> ReverseOrder< Self > 
+        where Self: Sized
+    {
+        ReverseOrder::new( self )
+    }
 }
 
 /// Modeled off the Rust trait `std::cmp::Ord`.
@@ -162,16 +240,88 @@ pub trait JudgePartialOrder< T > {
 /// by lexicographic order, etc.  The Rust traits for `Ord` and `PartialOrd`
 /// only accomodate a single order per struct.  Therefore we create third-party
 /// objects or "operators" to operationalize different orders.
+/// 
+/// # Examples
+/// 
+/// For general information about order operators see the documentation page for [order](crate::utilities::order).
+/// 
+/// The following example shows how to implement [JudgePartialOrder] on a new struct in order to make a new order operator.
+/// 
+/// ```
+/// use oat_rust::utilities::order::{JudgePartialOrder, JudgeOrder};
+/// 
+/// use std::cmp::Ordering;
+/// 
+/// //  Define a new type of struct
+/// //  ---------------------------        
+/// pub struct MyOrderOperator;
+/// 
+/// //  Implement the JudgePartialOrder trait on our new struct
+/// //  -------------------------------------------------------
+/// impl JudgePartialOrder< usize > for MyOrderOperator {
+/// 
+///     // this function should return true iff left >= right
+///     fn judge_ge(&self,left: &usize, right: &usize) -> bool {
+///         left >= right 
+///     }
+///     // this function should return true iff left > right
+///     fn judge_gt(&self,left: &usize, right: &usize) -> bool {
+///         left > right
+///     }
+///     // this function should return true iff left <= right
+///     fn judge_le(&self,left: &usize, right: &usize) -> bool {
+///         left <= right
+///     }
+///     // this function should return true iff left < right
+///     fn judge_lt(&self, left: &usize, right: &usize ) -> bool {
+///         left < right
+///     }
+///     fn judge_partial_cmp( & self, left: & usize, right: & usize )  -> Option<Ordering> {
+///         Some( left.cmp( right ) )
+///     }
+/// }
+/// 
+/// //  Implement the JudgeOrder trait on our new struct
+/// //  ------------------------------------------------
+/// impl JudgeOrder< usize > for MyOrderOperator {
+///     // the judge_clamp function in OAT is modeled off of the clamp function here: https://doc.rust-lang.org/std/cmp/trait.Ord.html
+///     fn judge_clamp(&self, clampee: usize, min: usize, max: usize) -> usize {
+///         clampee.clamp(min,max) // here we just use Rust's built-in clamp function
+///     }
+///     // the judge_cmp function in OAT is modeled off of the clamp function here: https://doc.rust-lang.org/std/cmp/trait.Ord.html            
+///     fn judge_cmp(&self, left: &usize, right: &usize ) -> Ordering {
+///         left.cmp(right)
+///     }
+///     // should return the maximum of left and right
+///     fn judge_max(&self, left: usize, right: usize) -> usize {
+///         left.max(right)
+///     }
+///     // should return the minimum of left and right
+///     fn judge_min(&self, left: usize, right: usize) -> usize {
+///         left.min(right)
+///     }
+/// }
+/// 
+/// //  Use the trait
+/// fn compare_order() {
+///     let a = 1usize;
+///     let b = 2usize;
+///     let order_operator = MyOrderOperator;
+/// 
+///     if order_operator.judge_lt( &a, &b ) { println!("a is strictly less than b") }
+///     else { println!("a is greater than or equal to b")}
+/// }
+/// ```
 pub trait JudgeOrder< T > : JudgePartialOrder< T > 
 {
     /// Similar to the `.cmp` method in `std::cmp::Ord`
-    fn judge_cmp(&self, lhs: &T, rhs: &T ) -> Ordering {
-        self.judge_partial_cmp(lhs, rhs).unwrap()
+    fn judge_cmp(&self, left: &T, right: &T ) -> Ordering {
+        self.judge_partial_cmp(left, right).unwrap()
     }
-    /// Return the greater of lhs, rhs; if they are equal, reutrh lhs
-    fn judge_max(&self, lhs: T, rhs: T) -> T { match self.judge_lt(&lhs, &rhs) { true => { rhs }, false => { lhs } } }
-    /// Return the lesser of lhs, rhx; if they are equal, return lhs
-    fn judge_min(&self, lhs: T, rhs: T) -> T { match self.judge_le(&lhs, &rhs) { true => { lhs }, false => { rhs } } }
+    /// Return the greater of left, right; if they are equal, reutrh left
+    fn judge_max(&self, left: T, right: T) -> T { match self.judge_lt(&left, &right) { true => { right }, false => { left } } }
+    /// Return the lesser of left, rhx; if they are equal, return left
+    fn judge_min(&self, left: T, right: T) -> T { match self.judge_le(&left, &right) { true => { left }, false => { right } } }
     /// Similar to Rust's `num::clamp`    
     fn judge_clamp(&self, clampee: T, min: T, max: T) -> T { 
         if self.judge_lt( &max, &min ) { panic!("Cannot call `self.clamp( clampee, min, max )` when max < min") };
@@ -195,12 +345,12 @@ pub trait JudgeOrder< T > : JudgePartialOrder< T >
 /// # Example
 /// 
 /// ```
-/// use oat_rust::utilities::order::NoneGreater;
+/// use oat_rust::utilities::order::MakeNoneMaximum;
 /// use std::cmp::Ordering;
 /// 
-/// let a   =   NoneGreater::from_val(0usize);
-/// let b   =   NoneGreater::from_val(1usize);
-/// let c   =   NoneGreater::from_opt(None);
+/// let a   =   MakeNoneMaximum::from_val(0usize);
+/// let b   =   MakeNoneMaximum::from_val(1usize);
+/// let c   =   MakeNoneMaximum::from_opt(None);
 /// 
 /// assert!( a <  b );
 /// assert!( a == a );
@@ -215,16 +365,29 @@ pub trait JudgeOrder< T > : JudgePartialOrder< T >
 /// 
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct NoneGreater< T > { pub opt: Option< T > }
+pub struct MakeNoneMaximum< T > { pub opt: Option< T > }
 
-impl < T > NoneGreater< T > {
-    pub fn new( opt: Option<T> ) -> Self { NoneGreater{opt} }    
-    pub fn from_opt( opt: Option<T> ) -> Self { NoneGreater{opt} }
-    pub fn from_val( val: T ) -> Self{ NoneGreater{ opt: Some(val) } }
+impl < T > MakeNoneMaximum< T > {
+    pub fn new( opt: Option<T> ) -> Self { MakeNoneMaximum{opt} }    
+    
+    /// Wraps `opt` in a `MakeNoneMaximum{ opt }` struct
+    pub fn from_opt( opt: Option<T> ) -> Self { MakeNoneMaximum{opt} }
+
+    /// Wraps `val` in a `MakeNoneMaximum{ opt: Some(val) }` struct
+    pub fn from_val( val: T ) -> Self{ MakeNoneMaximum{ opt: Some(val) } }
+
+    /// Returns a clone of the value wrapped in `MakeNoneMaximum`, if it exists
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if `self.opt` is `None`
     pub fn val( &self ) -> T where T: Clone { self.opt.clone().unwrap() }
+
+    /// Returns the internally stored `Option<T>`
+    pub fn into_inner( self ) -> Option<T> { self.opt }
 }
 
-impl < T: Ord + PartialOrd + Eq > Ord for NoneGreater< T > {
+impl < T: Ord + PartialOrd + Eq > Ord for MakeNoneMaximum< T > {
     
 
     fn cmp(&self, other: &Self) -> Ordering {
@@ -246,14 +409,14 @@ impl < T: Ord + PartialOrd + Eq > Ord for NoneGreater< T > {
     }
 }
 
-impl < T: Ord + PartialOrd > PartialOrd for NoneGreater< T > {
+impl < T: Ord + PartialOrd > PartialOrd for MakeNoneMaximum< T > {
     
     /// ```
-    /// use oat_rust::utilities::order::NoneGreater;
+    /// use oat_rust::utilities::order::MakeNoneMaximum;
     /// 
-    /// let a   =   NoneGreater::from_val(0usize);
-    /// let b   =   NoneGreater::from_val(1usize);
-    /// let c   =   NoneGreater::from_opt(None);
+    /// let a   =   MakeNoneMaximum::from_val(0usize);
+    /// let b   =   MakeNoneMaximum::from_val(1usize);
+    /// let c   =   MakeNoneMaximum::from_opt(None);
     /// 
     /// assert!( a <  b );
     /// assert!( a == a );
@@ -270,6 +433,46 @@ impl < T: Ord + PartialOrd > PartialOrd for NoneGreater< T > {
         }        
     }
 }
+
+
+
+//  ---------------------------------------------------------------------------
+//  DEFAULT IMPLEMENTATION ON REFERENCES
+//  ---------------------------------------------------------------------------
+
+
+
+//  Auto-implement on references
+//  ----------------------------
+
+impl < 'a, T, OrderOperator: JudgePartialOrder< T > >
+
+    JudgePartialOrder< T > for
+    
+    &'a OrderOperator
+{
+    fn judge_partial_cmp
+        ( & self, left: & T, right: & T ) -> Option<Ordering> { (*self).judge_partial_cmp(left, right) }
+}
+
+
+//  Auto-implement on references
+//  ----------------------------
+
+impl < 'a, T, OrderOperator: JudgeOrder< T > >
+
+    JudgeOrder< T > for
+    
+    &'a OrderOperator
+{
+    fn judge_cmp(&self, left: &T, right: &T ) -> Ordering {
+        (*self).judge_cmp(left, right)
+    }
+}
+
+
+
+
 
 
 //  ---------------------------------------------------------------------------
@@ -317,8 +520,8 @@ impl < T: Ord + PartialOrd > PartialOrd for NoneGreater< T > {
 //     where 
 //         ComparatorJudgePartialOrder:     JudgePartialOrder< T >,
 // {
-//     fn le(&self,lhs: &T, rhs: &T) -> bool { ! self.comparator_lt.judge_lt(rhs, lhs) }
-//     fn lt(&self,lhs: &T, rhs: &T) -> bool { self.comparator_lt.judge_lt(lhs, rhs) }  
+//     fn le(&self,left: &T, right: &T) -> bool { ! self.comparator_lt.judge_lt(right, left) }
+//     fn lt(&self,left: &T, right: &T) -> bool { self.comparator_lt.judge_lt(left, right) }  
 // }
 
 // impl < ComparatorJudgePartialOrder, T > 
@@ -338,6 +541,109 @@ impl < T: Ord + PartialOrd > PartialOrd for NoneGreater< T > {
 //  ---------------------------------------------------------------------------
 
 
+
+
+
+
+
+
+
+
+//  Merged type
+//  -------------
+
+
+/// A type that can be either of two different order operators, `OrderOperator1` or `OrderOperator2`.
+/// 
+/// This enum will judge the order of elements according to whichever order operator it contains internally.
+/// 
+/// # Examples
+/// 
+/// ```
+/// use oat_rust::utilities::order::{ ReverseOrder, OrderOperatorAuto, TwoTypeOrderOperator, JudgePartialOrder };
+/// 
+/// // a function to get either a forward or reverse order operator
+/// let get_forward_operator = |forward| {
+///     if forward { 
+///         TwoTypeOrderOperator::Version1( OrderOperatorAuto ) 
+///     } else { 
+///         TwoTypeOrderOperator::Version2( ReverseOrder::new( OrderOperatorAuto ) )
+///     }
+/// };
+/// 
+/// // get some operators
+/// let forward = get_forward_operator( true );
+/// let reverse = get_forward_operator( false );
+/// 
+/// // check that they order elements correctly
+/// assert!( forward.judge_lt( &1, &2) );
+/// assert!( reverse.judge_lt( &2, &1) );
+/// ```
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum TwoTypeOrderOperator< OrderOperator1, OrderOperator2 >
+{
+    Version1( OrderOperator1 ),
+    Version2( OrderOperator2 ),
+}
+
+
+impl < OrderOperator1, OrderOperator2, T > 
+
+    JudgePartialOrder
+        < T > for 
+        
+    TwoTypeOrderOperator
+        < OrderOperator1, OrderOperator2 >
+
+where 
+    OrderOperator1: JudgePartialOrder< T >,
+    OrderOperator2: JudgePartialOrder< T >,
+{
+    fn judge_partial_cmp( & self, left: & T, right: & T ) -> Option<Ordering> {
+        match self {
+            TwoTypeOrderOperator::Version1( op ) => op.judge_partial_cmp( left, right ),
+            TwoTypeOrderOperator::Version2( op ) => op.judge_partial_cmp( left, right ),
+        }
+    }
+}
+
+
+
+
+impl < OrderOperator1, OrderOperator2, T > 
+
+    JudgeOrder
+        < T > for 
+        
+    TwoTypeOrderOperator
+        < OrderOperator1, OrderOperator2 >
+
+where 
+    OrderOperator1: JudgeOrder< T >,
+    OrderOperator2: JudgeOrder< T >,
+{
+    fn judge_cmp( & self, left: & T, right: & T ) -> Ordering {
+        match self {
+            TwoTypeOrderOperator::Version1( op ) => op.judge_cmp( left, right ),
+            TwoTypeOrderOperator::Version2( op ) => op.judge_cmp( left, right ),
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 //  Reverse order
 //  -------------
 
@@ -348,8 +654,8 @@ impl < T: Ord + PartialOrd > PartialOrd for NoneGreater< T > {
 /// ```
 /// use oat_rust::utilities::order::{ ReverseOrder, OrderOperatorAuto, JudgePartialOrder };
 /// 
-/// let mut order_comaprator_reverse = ReverseOrder::new( OrderOperatorAuto );
-/// assert!( order_comaprator_reverse.judge_lt( &2, &1) )
+/// let mut order_operator_reverse = ReverseOrder::new( OrderOperatorAuto );
+/// assert!( order_operator_reverse.judge_lt( &2, &1) )
 /// ```
 /// 
 /// # See also
@@ -377,7 +683,7 @@ impl < T, UnreversedOrderOperator: JudgePartialOrder< T > >
         < UnreversedOrderOperator >
 
 {
-    fn judge_partial_cmp( & self, lhs: & T, rhs: & T ) -> Option<Ordering> { self.unreversed_order_operator.judge_partial_cmp( rhs, lhs ) }
+    fn judge_partial_cmp( & self, left: & T, right: & T ) -> Option<Ordering> { self.unreversed_order_operator.judge_partial_cmp( right, left ) }
 }
 
 impl < T, UnreversedOrderOperator: JudgePartialOrder< T > + JudgeOrder< T > > 
@@ -389,7 +695,7 @@ impl < T, UnreversedOrderOperator: JudgePartialOrder< T > + JudgeOrder< T > >
         < UnreversedOrderOperator >
 
 {
-    fn judge_cmp( & self, lhs: & T, rhs: & T ) -> Ordering { self.unreversed_order_operator.judge_cmp( rhs, lhs ) }
+    fn judge_cmp( & self, left: & T, right: & T ) -> Ordering { self.unreversed_order_operator.judge_cmp( right, left ) }
 }
 
 /// A convenience trait which allows the user to reverse an order operator via `operator.reverse_order()`
@@ -407,58 +713,6 @@ impl < T: Sized> IntoReverseOrder for T
 }
 
 
-
-// //  Less-than (auto implementor)
-// //  ----------------------------
-
-// /// Zero-memory struct that arbitrates the (partial) order on structs that implement [PartialOrd]
-// /// or [Ord]; 
-// #[derive(Debug, Eq, PartialEq)]
-// pub struct OrderOperatorAutoLt< T: PartialOrd >{ 
-//     phantom_compared_type: PhantomData< T > 
-// }
-
-// impl < T: PartialOrd > OrderOperatorAutoLt< T > {
-//     pub fn new() -> OrderOperatorAutoLt< T > { OrderOperatorAutoLt{ phantom_compared_type: PhantomData } }
-// }
-
-// // Clone
-// impl <T> 
-
-//     Clone for 
-
-//     OrderOperatorAutoLt
-//         < T > where 
-
-//     T:  PartialOrd
-    
-// {
-//     fn clone(&self) -> Self { Self::new() }
-// } 
-
-// // Copy
-// impl <T> 
-
-//     Copy for 
-
-//     OrderOperatorAutoLt
-//         < T > where 
-    
-//     T:  PartialOrd        
-// {} 
-
-// impl<T: PartialOrd> JudgePartialOrder< T > for OrderOperatorAutoLt< T > {
-//     fn judge_partial_cmp( & self, a: &T, b: &T) -> Option<Ordering> { a.partial_cmp(b) }
-// }
-
-// // impl<T: PartialOrd> JudgePartialOrder< T > for OrderOperatorAutoLt< T > {
-// //     fn le(& self, lhs: &T, rhs: &T) -> bool { lhs <= rhs }
-// //     fn lt(& self, lhs: &T, rhs: &T) -> bool { lhs <  rhs }    
-// // }
-
-// impl<T: PartialOrd + Ord> JudgeOrder< T > for OrderOperatorAutoLt< T > {} // all methods in this trait are auto-implemented
-
-
 //  Less-than (auto implementor, any type)
 //  ----------------------------
 
@@ -473,7 +727,7 @@ impl < T: Sized> IntoReverseOrder for T
 /// # See also
 /// 
 /// See See the documentation for the [order](crate::utilities::order) module for an overview on order operators.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd)]
 pub struct OrderOperatorAuto;
 
 impl OrderOperatorAuto {
@@ -483,14 +737,14 @@ impl OrderOperatorAuto {
 impl<T: PartialOrd> JudgePartialOrder< T > for OrderOperatorAuto {
     
     fn judge_partial_cmp
-            ( & self, lhs: & T, rhs: & T ) 
+            ( & self, left: & T, right: & T ) 
             -> 
             Option<Ordering> {
-        lhs.partial_cmp( rhs )
+        left.partial_cmp( right )
     }
 }
 
-impl<T: PartialOrd + Ord> 
+impl<T: Ord> 
 
     JudgeOrder
         < T > for 
@@ -524,14 +778,14 @@ impl OrderOperatorAutoReverse {
 
 impl<T: PartialOrd> JudgePartialOrder< T > for OrderOperatorAutoReverse {
     fn judge_partial_cmp
-            ( & self, lhs: & T, rhs: & T ) 
+            ( & self, left: & T, right: & T ) 
             -> 
             Option<Ordering> {
-        rhs.partial_cmp(lhs)
+        right.partial_cmp(left)
     }
 }
 
-impl<T: PartialOrd + Ord> JudgeOrder< T > for OrderOperatorAutoReverse {} // all methods in this trait are auto-implemented
+impl<T: Ord> JudgeOrder< T > for OrderOperatorAutoReverse {} // all methods in this trait are auto-implemented
 
 
 
@@ -549,85 +803,50 @@ impl<T: PartialOrd + Ord> JudgeOrder< T > for OrderOperatorAutoReverse {} // all
 /// # See also
 /// 
 /// See See the documentation for the [order](crate::utilities::order) module for an overview on order operators.
-#[derive(Debug, Eq, PartialEq)]
-pub struct OrderOperatorByKey< Key, Val, KeyValPair >{
-    phantom_key:    PhantomData < Key >,
-    phantom_val:    PhantomData < Val >,
-    phantom_pair:   PhantomData < KeyValPair >,        
-}
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Copy, new, Serialize, Deserialize)]
+pub struct OrderOperatorByKey;
 
-// Constructor
-impl< Key, Val, KeyValPair > OrderOperatorByKey< Key, Val, KeyValPair >{
-    pub fn new() -> OrderOperatorByKey< Key, Val, KeyValPair > { 
-        OrderOperatorByKey{
-                phantom_key:    PhantomData,
-                phantom_val:    PhantomData,
-                phantom_pair:   PhantomData, 
-            }         
-    }
-}
-
-// Copy
-impl< Key, Val, KeyValPair >
-
-    Clone for 
     
-    OrderOperatorByKey 
-        < Key, Val, KeyValPair >
-{
-    fn clone(&self) -> Self { Self::new() }
-} 
 
-// Copy
-impl< Key, Val, KeyValPair >
-
-    Copy for 
-    
-    OrderOperatorByKey 
-        < Key, Val, KeyValPair >
-{}        
-
-// JudgePartialOrder trait implementation
-impl< Key, Val, KeyValPair >
+// JudgePartialOrder
+impl < KeyValuePairStruct >
 
     JudgePartialOrder 
-        < KeyValPair > for 
+        < KeyValuePairStruct > for 
     
     OrderOperatorByKey 
-        < Key, Val, KeyValPair >
 
-    where   Key:            PartialOrd,
-            KeyValPair:     KeyValGet < Key, Val, >
+    where   KeyValuePairStruct::Key:      PartialOrd,
+            KeyValuePairStruct:           KeyValGet,
     
     {
 
     fn judge_partial_cmp
-            ( & self, lhs: & KeyValPair, rhs: & KeyValPair ) 
+            ( & self, left: & KeyValuePairStruct, right: & KeyValuePairStruct ) 
             -> 
             Option<Ordering> {
-        ( lhs.key() ).partial_cmp( &rhs.key() )
+        ( left.key() ).partial_cmp( &right.key() )
     }
 }
 
-// JudgePartialOrder trait implementation
-impl< Key, Val, KeyValPair >
+// JudgeOrder
+impl< KeyValuePairStruct >
 
     JudgeOrder 
-        < KeyValPair > for 
+        < KeyValuePairStruct > for 
     
     OrderOperatorByKey 
-        < Key, Val, KeyValPair >
 
-    where   Key:            Ord + PartialOrd,
-            KeyValPair:     KeyValGet < Key, Val, >
+    where   KeyValuePairStruct::Key:      Ord,
+            KeyValuePairStruct:           KeyValGet,
     
     {
 
     fn judge_cmp
-            ( & self, lhs: & KeyValPair, rhs: & KeyValPair ) 
+            ( & self, left: & KeyValuePairStruct, right: & KeyValuePairStruct ) 
             -> 
             Ordering {
-        ( lhs.key() ).cmp( &rhs.key() )
+        ( left.key() ).cmp( &right.key() )
     }
 }
 
@@ -651,15 +870,12 @@ impl< Key, Val, KeyValPair >
 /// # See also
 /// 
 /// See See the documentation for the [order](crate::utilities::order) module for an overview on order operators.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct OrderOperatorByKeyTuple{}
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Copy, new)]
+pub struct OrderOperatorByKeyTuple;
 
-// Constructor
-impl OrderOperatorByKeyTuple{
-    pub fn new() -> OrderOperatorByKeyTuple{    OrderOperatorByKeyTuple{}    }
-}
 
-// JudgePartialOrder trait implementation
+
+// JudgePartialOrder
 impl< Key, Val >
 
     JudgePartialOrder 
@@ -671,10 +887,30 @@ impl< Key, Val >
         Key:            PartialOrd,
     {
     fn judge_partial_cmp
-            ( & self, lhs: & (Key, Val), rhs: & (Key, Val) ) 
+            ( & self, left: & (Key, Val), right: & (Key, Val) ) 
             -> 
             Option<Ordering> {
-        lhs.0.partial_cmp( &rhs.0)
+        left.0.partial_cmp( &right.0)
+    }
+}
+
+// JudgeOrder
+impl< Key, Val >
+
+    JudgeOrder 
+        < (Key, Val) > for 
+    
+    OrderOperatorByKeyTuple 
+
+    where Key:          Ord,
+    
+    {
+
+    fn judge_cmp
+            ( & self, left: & (Key, Val), right: & (Key, Val) ) 
+            -> 
+            Ordering {
+        ( left.0 ).cmp( &right.0 )
     }
 }
 
@@ -694,63 +930,49 @@ impl< Key, Val >
 /// # See also
 /// 
 /// See See the documentation for the [order](crate::utilities::order) module for an overview on order operators.
-#[derive(Debug, Eq, PartialEq)]
-pub struct OrderOperatorByKeyReverse < Key, Val, KeyValPair > {
-    phantom_key:    PhantomData < Key >,
-    phantom_val:    PhantomData < Val >,
-    phantom_pair:   PhantomData < KeyValPair >,        
-}
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Copy, new)]
+pub struct OrderOperatorByKeyReverse;
 
-// Copy
-impl< Key, Val, KeyValPair >
 
-    Clone for 
-    
-    OrderOperatorByKeyReverse 
-        < Key, Val, KeyValPair >
-{
-    fn clone(&self) -> Self { Self::new() }
-} 
-
-// Copy
-impl< Key, Val, KeyValPair >
-
-    Copy for 
-    
-    OrderOperatorByKeyReverse 
-        < Key, Val, KeyValPair >
-{}   
-
-// Constructor
-impl< Key, Val, KeyValPair > OrderOperatorByKeyReverse< Key, Val, KeyValPair >{
-    pub fn new() -> OrderOperatorByKeyReverse< Key, Val, KeyValPair > { 
-        OrderOperatorByKeyReverse{
-                phantom_key:    PhantomData,
-                phantom_val:    PhantomData,
-                phantom_pair:   PhantomData, 
-            }         
-    }
-}
-
-// JudgePartialOrder trait implementation
-impl< Key, Val, KeyValPair >
+// JudgePartialOrder
+impl< KeyValuePairStruct >
 
     JudgePartialOrder 
-        < KeyValPair >
+        < KeyValuePairStruct >
     
     for OrderOperatorByKeyReverse 
-        < Key, Val, KeyValPair >
 
-    where   Key:            PartialOrd,
-            KeyValPair:     KeyValGet < Key, Val, >
+    where   KeyValuePairStruct::Key:      PartialOrd,
+            KeyValuePairStruct:           KeyValGet,
     
     {
 
     fn judge_partial_cmp
-            ( & self, lhs: & KeyValPair, rhs: & KeyValPair ) 
+            ( & self, left: & KeyValuePairStruct, right: & KeyValuePairStruct ) 
             -> 
             Option<Ordering> {
-        rhs.key().partial_cmp( &lhs.key() )
+        right.key().partial_cmp( &left.key() )
+    }
+}
+
+// JudgeOrder
+impl< KeyValuePairStruct >
+
+    JudgeOrder 
+        < KeyValuePairStruct >
+    
+    for OrderOperatorByKeyReverse 
+
+    where   KeyValuePairStruct::Key:      Ord,
+            KeyValuePairStruct:           KeyValGet,
+    
+    {
+
+    fn judge_cmp
+            ( & self, left: & KeyValuePairStruct, right: & KeyValuePairStruct ) 
+            -> 
+            Ordering {
+        ( right.key() ).cmp( &left.key() )
     }
 }
 
@@ -770,81 +992,47 @@ impl< Key, Val, KeyValPair >
 /// # See also
 /// 
 /// See See the documentation for the [order](crate::utilities::order) module for an overview on order operators.
-#[derive(Debug, Eq, PartialEq)]
-pub struct OrderOperatorByKeyCutsom < Key, Val, KeyValPair, KeyComparator > 
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Copy, new)]
+pub struct OrderOperatorByKeyCustom < OrderOperatorForKeys > 
 {
-    key_comparator: KeyComparator,
-    phantom_key:    PhantomData < Key >,
-    phantom_val:    PhantomData < Val >,
-    phantom_pair:   PhantomData < KeyValPair >,        
+    order_operator_for_keys: OrderOperatorForKeys,    
 }
 
-// Constructor
-impl< Key, Val, KeyValPair, KeyComparator > OrderOperatorByKeyCutsom < Key, Val, KeyValPair, KeyComparator >  {
-    pub fn new( key_comparator: KeyComparator ) -> OrderOperatorByKeyCutsom < Key, Val, KeyValPair, KeyComparator >  {
-        OrderOperatorByKeyCutsom{ key_comparator, phantom_key: PhantomData, phantom_pair: PhantomData, phantom_val: PhantomData }
-    }
-}
 
-// Copy
-impl< Key, Val, KeyValPair, KeyComparator >
-
-    Clone for 
-    
-    OrderOperatorByKeyCutsom 
-        < Key, Val, KeyValPair, KeyComparator > 
-
-    where 
-        KeyComparator:  Clone,
-{
-    fn clone(&self) -> Self { OrderOperatorByKeyCutsom::new( self.key_comparator.clone() ) }
-} 
-
-// Copy
-impl< Key, Val, KeyValPair, KeyComparator > 
-
-    Copy for 
-    
-    OrderOperatorByKeyCutsom 
-        < Key, Val, KeyValPair, KeyComparator > 
-
-    where 
-        KeyComparator:  Clone + Copy,        
-{ }  
-
-// JudgePartialOrder trait implementation
-impl< Key, Val, KeyValPair, KeyComparator >
+// JudgePartialOrder
+impl< KeyValuePairStruct, OrderOperatorForKeys >
 
     JudgePartialOrder 
-        < KeyValPair > for 
+        < KeyValuePairStruct > for 
     
-    OrderOperatorByKeyCutsom 
-        < Key, Val, KeyValPair, KeyComparator > where
-
-    KeyValPair:     KeyValGet < Key, Val, >,
-    KeyComparator:  JudgePartialOrder <  Key >,
+    OrderOperatorByKeyCustom 
+        < OrderOperatorForKeys > 
+        
+    where
+        KeyValuePairStruct:         KeyValGet,
+        OrderOperatorForKeys:       JudgePartialOrder <  KeyValuePairStruct::Key >,
     
     {
     fn judge_partial_cmp
-            ( & self, lhs: & KeyValPair, rhs: & KeyValPair ) 
+            ( & self, left: & KeyValuePairStruct, right: & KeyValuePairStruct ) 
             -> 
             Option<Ordering> {
-        self.key_comparator.judge_partial_cmp( & lhs.key(), & rhs.key())
+        self.order_operator_for_keys.judge_partial_cmp( & left.key(), & right.key())
     }
 }
 
-// JudgePartialOrder trait implementation
-impl< Key, Val, KeyValPair, KeyComparator >
+// JudgeOrder
+impl< KeyValuePairStruct, OrderOperatorForKeys >
 
     JudgeOrder 
-        < KeyValPair > for 
+        < KeyValuePairStruct > for 
     
-    OrderOperatorByKeyCutsom 
-        < Key, Val, KeyValPair, KeyComparator > where
-
-    KeyValPair:     KeyValGet < Key, Val, >,
-    KeyComparator:  JudgePartialOrder <  Key >,
-    
+    OrderOperatorByKeyCustom 
+        < OrderOperatorForKeys > 
+        
+    where
+        KeyValuePairStruct:         KeyValGet,
+        OrderOperatorForKeys:       JudgeOrder <  KeyValuePairStruct::Key >,
     {}
 
 
@@ -852,6 +1040,9 @@ impl< Key, Val, KeyValPair, KeyComparator >
 //  ---------------------------------------------
 
 use std::marker::PhantomData;
+
+use derive_new::new;
+use serde::{Deserialize, Serialize};
 
 use crate::algebra::vectors::entries::KeyValGet;
 
@@ -920,10 +1111,10 @@ impl <T, F: Fn(&T, &T)->Option<Ordering> >
     //     (self.order_operator_unwrapped)(a, b)
     // }
     fn judge_partial_cmp
-            ( & self, lhs: & T, rhs: & T ) 
+            ( & self, left: & T, right: & T ) 
             -> 
             Option<Ordering> {
-        (self.order_operator_unwrapped)( lhs, rhs )
+        (self.order_operator_unwrapped)( left, right )
     }
 }
 
@@ -993,15 +1184,15 @@ impl <T, F: Fn(&T, &T)->bool >
         < F, T > 
 {
     fn judge_partial_cmp
-            ( & self, lhs: & T, rhs: & T ) 
+            ( & self, left: & T, right: & T ) 
             -> 
             Option<Ordering> {
-        if (self.order_operator_unwrapped)( lhs, rhs ) { return Some(Ordering::Less) }
-        if (self.order_operator_unwrapped)( rhs, lhs ) { return Some(Ordering::Greater) }
+        if (self.order_operator_unwrapped)( left, right ) { return Some(Ordering::Less) }
+        if (self.order_operator_unwrapped)( right, left ) { return Some(Ordering::Greater) }
         Some(Ordering::Equal)
     }
 
-    fn judge_lt( &self, lhs: & T, rhs: & T ) -> bool { (self.order_operator_unwrapped)( lhs, rhs ) }
+    fn judge_lt( &self, left: & T, right: & T ) -> bool { (self.order_operator_unwrapped)( left, right ) }
 }
 
 impl <T, F: Fn(&T, &T)->bool > 
@@ -1013,11 +1204,11 @@ impl <T, F: Fn(&T, &T)->bool >
         < F, T > 
 {
     fn judge_cmp
-            ( & self, lhs: & T, rhs: & T ) 
+            ( & self, left: & T, right: & T ) 
             -> 
             Ordering {
-        if (self.order_operator_unwrapped)( lhs, rhs ) { return Ordering::Less }
-        if (self.order_operator_unwrapped)( rhs, lhs ) { return Ordering::Greater }
+        if (self.order_operator_unwrapped)( left, right ) { return Ordering::Less }
+        if (self.order_operator_unwrapped)( right, left ) { return Ordering::Greater }
         Ordering::Equal
     }
 }
@@ -1026,3 +1217,399 @@ impl <T, F: Fn(&T, &T)->bool >
 
 
 
+
+
+//  Order first by LENGTH, then LEXICOGRAPHIC
+//  -------------------------------------------------------------------------------------------------
+
+
+/// Orders vectors first by length, then by lexicographic order
+/// 
+/// # Example
+/// 
+/// ```
+/// use oat_rust::utilities::order::{ JudgePartialOrder, JudgeOrder, LexicographicOrderDominatedBylength};
+/// use std::cmp::Ordering;
+/// 
+/// // create an instance of the order operator
+/// let order_operator = LexicographicOrderDominatedBylength::new();
+/// 
+/// // partial order comparisons
+/// // ---------------------------------
+/// 
+/// assert!( 
+///     Some( Ordering::Less ) ==
+///     order_operator.judge_partial_cmp( 
+///         &vec![0],
+///         &vec![1]
+///     ) 
+/// );
+/// 
+/// assert!( 
+///     Some( Ordering::Greater ) ==
+///     order_operator.judge_partial_cmp( 
+///         &vec![0,1],
+///         &vec![1]
+///     )
+/// );
+/// 
+/// assert!( 
+///     Some( Ordering::Less ) ==
+///     order_operator.judge_partial_cmp( 
+///         &vec![0],
+///         &vec![1,2]
+///     )
+/// );
+/// 
+/// assert!( 
+///     Some( Ordering::Equal ) ==
+///     order_operator.judge_partial_cmp( 
+///         &vec![0],
+///         &vec![0]
+///     )
+/// );
+/// 
+/// // order comparisons
+/// // ---------------------------------
+/// 
+/// assert!( 
+///     Ordering::Less ==
+///     order_operator.judge_cmp( 
+///         &vec![0],
+///         &vec![1]
+///     )
+/// );
+/// 
+/// assert!( 
+///     Ordering::Greater ==
+///     order_operator.judge_cmp( 
+///         &vec![0,1],
+///         &vec![1]
+///     )
+/// );
+/// 
+/// assert!( 
+///     Ordering::Less ==
+///     order_operator.judge_cmp( 
+///         &vec![0],
+///         &vec![1,2]
+///     )
+/// );
+/// 
+/// assert!( 
+///     Ordering::Equal ==
+///     order_operator.judge_cmp( 
+///         &vec![0],
+///         &vec![0]
+///     )
+/// );    
+/// ```
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Copy, new)]
+pub struct LexicographicOrderDominatedBylength{}
+
+impl < T >
+
+    JudgePartialOrder< Vec<T> > for 
+    
+    LexicographicOrderDominatedBylength
+
+    where
+        T:  PartialOrd
+{
+    fn judge_partial_cmp
+        ( & self, left: & Vec<T>, right: & Vec<T> ) 
+        -> 
+        Option<Ordering>
+    {
+        let left_len = left.len();
+        let right_len = right.len();
+        match left_len.cmp( & right_len ) {
+            Ordering::Equal => { left.partial_cmp(right)  },
+            Ordering::Less => { Some( Ordering::Less ) },
+            Ordering::Greater => { Some( Ordering::Greater ) }
+        }
+    }             
+}    
+
+
+impl < T >
+
+    JudgeOrder< Vec<T> > for 
+    
+    LexicographicOrderDominatedBylength
+
+    where
+        T:  Ord
+{
+    fn judge_cmp
+        ( & self, left: & Vec<T>, right: & Vec<T> ) 
+        -> 
+        Ordering
+    {
+        let left_len = left.len();
+        let right_len = right.len();
+        match left_len.cmp( & right_len ) {
+            Ordering::Equal => { left.cmp(right)  },
+            Ordering::Less => { Ordering::Less },
+            Ordering::Greater => { Ordering::Greater }
+        }
+    }      
+}   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//  Order first by REVERSE LENGTH, then LEXICOGRAPHIC
+//  -------------------------------------------------------------------------------------------------
+
+
+/// Orders vectors first by length, then by lexicographic order
+/// 
+/// # Example
+/// 
+/// ```
+/// use oat_rust::utilities::order::{ JudgePartialOrder, JudgeOrder, LexicographicOrderDominatedByReverselength};
+/// use std::cmp::Ordering;
+/// 
+/// // create an instance of the order operator
+/// let order_operator = LexicographicOrderDominatedByReverselength::new();
+/// 
+/// // partial order comparisons
+/// // ---------------------------------
+/// 
+/// assert!( 
+///     Some( Ordering::Less ) ==
+///     order_operator.judge_partial_cmp( 
+///         &vec![0],
+///         &vec![1]
+///     ) 
+/// );
+/// 
+/// assert!( 
+///     Some( Ordering::Less ) ==
+///     order_operator.judge_partial_cmp( 
+///         &vec![0,1],
+///         &vec![1]
+///     )
+/// );
+/// 
+/// assert!( 
+///     Some( Ordering::Greater ) ==
+///     order_operator.judge_partial_cmp( 
+///         &vec![0],
+///         &vec![1,2]
+///     )
+/// );
+/// 
+/// assert!( 
+///     Some( Ordering::Equal ) ==
+///     order_operator.judge_partial_cmp( 
+///         &vec![0],
+///         &vec![0]
+///     )
+/// );
+/// 
+/// // order comparisons
+/// // ---------------------------------
+/// 
+/// assert!( 
+///     Ordering::Less ==
+///     order_operator.judge_cmp( 
+///         &vec![0],
+///         &vec![1]
+///     )
+/// );
+/// 
+/// assert!( 
+///     Ordering::Less ==
+///     order_operator.judge_cmp( 
+///         &vec![0,1],
+///         &vec![1]
+///     )
+/// );
+/// 
+/// assert!( 
+///     Ordering::Greater ==
+///     order_operator.judge_cmp( 
+///         &vec![0],
+///         &vec![1,2]
+///     )
+/// );
+/// 
+/// assert!( 
+///     Ordering::Equal ==
+///     order_operator.judge_cmp( 
+///         &vec![0],
+///         &vec![0]
+///     )
+/// );    
+/// ```
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Copy, new)]
+pub struct LexicographicOrderDominatedByReverselength{}
+
+impl < T >
+
+    JudgePartialOrder< Vec<T> > for 
+    
+    LexicographicOrderDominatedByReverselength
+
+    where
+        T:  PartialOrd
+{
+    fn judge_partial_cmp
+        ( & self, left: & Vec<T>, right: & Vec<T> ) 
+        -> 
+        Option<Ordering>
+    {
+        let left_len = left.len();
+        let right_len = right.len();
+        match left_len.cmp( & right_len ) {
+            Ordering::Equal => { left.partial_cmp(right)  },
+            Ordering::Less => { Some( Ordering::Greater ) },
+            Ordering::Greater => { Some( Ordering::Less ) }
+        }
+    }             
+}    
+
+
+impl < T >
+
+    JudgeOrder< Vec<T> > for 
+    
+    LexicographicOrderDominatedByReverselength
+
+    where
+        T:  Ord
+{
+    fn judge_cmp
+        ( & self, left: & Vec<T>, right: & Vec<T> ) 
+        -> 
+        Ordering
+    {
+        let left_len = left.len();
+        let right_len = right.len();
+        match left_len.cmp( & right_len ) {
+            Ordering::Equal => { left.cmp(right)  },
+            Ordering::Less => { Ordering::Greater },
+            Ordering::Greater => { Ordering::Less }
+        }
+    }      
+}   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//  TESTS
+//  ========================================================
+
+
+
+#[cfg(test)]
+mod tests {
+
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+
+
+    #[test]
+    fn define_order_operator() {     
+        use crate::utilities::order::JudgePartialOrder;
+
+        //  Define a new type of struct
+        //  ---------------------------        
+        pub struct MyOrderOperator;
+
+        //  Implement the JudgePartialOrder trait on our new struct
+        //  -------------------------------------------------------
+        impl JudgePartialOrder< usize > for MyOrderOperator {
+
+            // this function should return true iff left >= right
+            fn judge_ge(&self,left: &usize, right: &usize) -> bool {
+                left >= right 
+            }
+            // this function should return true iff left > right
+            fn judge_gt(&self,left: &usize, right: &usize) -> bool {
+                left > right
+            }
+            // this function should return true iff left <= right
+            fn judge_le(&self,left: &usize, right: &usize) -> bool {
+                left <= right
+            }
+            // this function should return true iff left < right
+            fn judge_lt(&self, left: &usize, right: &usize ) -> bool {
+                left < right
+            }
+            fn judge_partial_cmp( & self, left: & usize, right: & usize )  -> Option<Ordering> {
+                Some( left.cmp( right ) )
+            }
+        }
+
+        //  Implement the JudgeOrder trait on our new struct
+        //  ------------------------------------------------
+        impl JudgeOrder< usize > for MyOrderOperator {
+            // the judge_clamp function in OAT is modeled off of the clamp function here: https://doc.rust-lang.org/std/cmp/trait.Ord.html
+            fn judge_clamp(&self, clampee: usize, min: usize, max: usize) -> usize {
+                clampee.clamp(min,max) // here we just use Rust's built-in clamp function
+            }
+            // the judge_cmp function in OAT is modeled off of the clamp function here: https://doc.rust-lang.org/std/cmp/trait.Ord.html            
+            fn judge_cmp(&self, left: &usize, right: &usize ) -> Ordering {
+                left.cmp(right)
+            }
+            // should return the maximum of left and right
+            fn judge_max(&self, left: usize, right: usize) -> usize {
+                left.max(right)
+            }
+            // should return the minimum of left and right
+            fn judge_min(&self, left: usize, right: usize) -> usize {
+                left.min(right)
+            }
+        }
+
+        //  Use the trait
+        fn compare_order() {
+            let a = 1usize;
+            let b = 2usize;
+            let order_operator = MyOrderOperator;
+
+            if order_operator.judge_lt( &a, &b ) { println!("a is strictly less than b") }
+            else { println!("a is greater than or equal to b")}
+        }
+
+    }
+
+}

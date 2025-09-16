@@ -1,6 +1,7 @@
-//! Stores two matrices, A and B; returns the major views of B as minor views.
+//! Stores two matrices, A and B; returns the rows of B as columns.
 //! 
-//! For example, calling `view_minor_ascend` on this struct will return `B.view_major_ascend`.
+//! For example, calling `self.column(&index)` on this struct will return `B.row(&index)`, while calling
+//! `self.row(&index)` will return `A.row(&index)`.
 //! 
 //! This module offers two data structures:
 //! 
@@ -10,17 +11,19 @@
 use derive_getters::{Getters, Dissolve};
 use derive_new::new;
 
-use crate::algebra::matrices::query::{IndicesAndCoefficients, ViewRowAscend, ViewRowDescend, ViewColAscend, ViewColDescend, ViewRow, ViewCol, MatrixOracle};
+use crate::algebra::{matrices::{operations::MatrixOracleOperations, query::{MatrixAlgebra, MatrixOracle}}, vectors::entries::KeyValGet};
 
+use std::fmt::Debug;
 
 
 //  ==========================================================
 //  BIMAJOR (REQUIRES TWO ORACLES)
 //  ==========================================================
 
-/// Stores two matrices, A and B; returns the major views of B as minor views.
+/// Stores two matrices, A and B; returns the rows of B as columns.
 /// 
-/// For example, calling `view_minor_ascend` on this struct will return `B.view_major_ascend`.
+/// For example, calling `self.column(&index)` on this struct will return `B.row(&index)`, while calling
+/// `self.row(&index)` will return `A.row(&index)`.
 /// 
 /// # See also
 /// 
@@ -29,9 +32,8 @@ use crate::algebra::matrices::query::{IndicesAndCoefficients, ViewRowAscend, Vie
 /// # Example
 /// 
 /// ```
-/// use oat_rust::algebra::matrices::operations::MatrixOperations;   
-/// use oat_rust::algebra::matrices::query::{ViewRowAscend, ViewRowDescend, ViewColDescend};
-/// use oat_rust::algebra::matrices::query::{ViewRow, ViewColAscend, ViewCol};        
+/// use oat_rust::algebra::matrices::operations::MatrixOracleOperations;   
+/// use oat_rust::algebra::matrices::query::MatrixOracle;
 /// use oat_rust::algebra::matrices::types::bimajor::MatrixBimajor;
 /// use oat_rust::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
 /// 
@@ -49,317 +51,195 @@ use crate::algebra::matrices::query::{IndicesAndCoefficients, ViewRowAscend, Vie
 /// // | -1   1   0 |
 /// // |  0  -1   1 |
 /// // |  0   0  -1 |        
-/// let matrix_data = VecOfVec::new(matrix_data);
-/// let matrix = & matrix_data;
-/// let transpose   = matrix.transpose();
-/// let bimajor     =   MatrixBimajor{ matrix_major: &matrix, matrix_minor: & transpose };
+/// let matrix_data = VecOfVec::new(matrix_data).ok().unwrap();
+/// let matrix                  =   & matrix_data;
+/// let num_rows_of_transpose   =   3;
+/// let transpose               =   matrix.transpose_deep(num_rows_of_transpose).unwrap(); // a non-lazy transpose; copies the data
+/// let bimajor                 =   MatrixBimajor{ matrix_rows: &matrix, matrix_columns: & transpose };
 ///    
-/// // check that major views agree
+/// // check that rows agree
 /// for index in 0..4 {
-///     assert_eq!(     matrix.view_major_ascend(index).collect_vec(), 
-///                     bimajor.view_major_ascend(index).collect_vec(),     );
-///     assert_eq!(     matrix.view_major_descend(index).collect_vec(), 
-///                     bimajor.view_major_descend(index).collect_vec(),    );                            
-///     assert_eq!(     matrix.view_major(index).collect_vec(), 
-///                     bimajor.view_major(index).collect_vec(),            ); 
+///     assert_eq!(     matrix.row(&index).collect_vec(), 
+///                     bimajor.row(&index).collect_vec(),     );
+///     assert_eq!(     matrix.row_reverse(&index).collect_vec(), 
+///                     bimajor.row_reverse(&index).collect_vec(),    );                            
+///     assert_eq!(     matrix.row(&index).collect_vec(), 
+///                     bimajor.row(&index).collect_vec(),            ); 
 /// }
 /// 
 /// // check that minor  views agree
 /// for index in 0..3 {
-///     assert_eq!(     matrix.view_minor_ascend(index).collect_vec(), 
-///                     bimajor.view_minor_ascend(index).collect_vec(),     );
-///     assert_eq!(     matrix.view_minor_descend(index).collect_vec(), 
-///                     bimajor.view_minor_descend(index).collect_vec(),    );                            
-///     assert_eq!(     matrix.view_minor(index).collect_vec(), 
-///                     bimajor.view_minor(index).collect_vec(),            );
+///     assert_eq!(     matrix.column(&index).collect_vec(), 
+///                     bimajor.column(&index).collect_vec(),     );
+///     assert_eq!(     matrix.column_reverse(&index).collect_vec(), 
+///                     bimajor.column_reverse(&index).collect_vec(),    );                            
+///     assert_eq!(     matrix.column(&index).collect_vec(), 
+///                     bimajor.column(&index).collect_vec(),            );
 /// }   
 /// ```        
-#[derive(new,Clone,Copy,Debug,Getters,Dissolve,Eq,PartialEq)]
-pub struct MatrixBimajor< MatrixMajor, MatrixMinor >
+#[derive(new,Clone,Copy,Debug,Getters,Dissolve,Eq,PartialEq,Ord,PartialOrd)]
+pub struct MatrixBimajor< MatrixRows, MatrixColumns >
 {
-    pub matrix_major:  MatrixMajor,
-    pub matrix_minor:  MatrixMinor,
+    pub matrix_rows:  MatrixRows,
+    pub matrix_columns:  MatrixColumns,
 }
 
 
 //  MATRIX ORACLE
 //  ---------------------------------------------------------------------
 
-impl < MatrixMajor, MatrixMinor >
+impl < MatrixRows, MatrixColumns >
 
     MatrixOracle for 
 
     MatrixBimajor
-        < MatrixMajor, MatrixMinor > 
+        < MatrixRows, MatrixColumns > 
 
     where 
-        MatrixMajor:    MatrixOracle,
-        MatrixMinor:    MatrixOracle< 
-                                RowIndex        =   MatrixMajor::ColumnIndex, 
-                                ColumnIndex     =   MatrixMajor::RowIndex,
-                                Coefficient     =   MatrixMajor::Coefficient,
+        MatrixRows:    MatrixOracle,
+        MatrixColumns:    MatrixOracle< 
+                                RowIndex        =   MatrixRows::ColumnIndex, 
+                                ColumnIndex     =   MatrixRows::RowIndex,
+                                Coefficient     =   MatrixRows::Coefficient,
                             >,    
 {
-    type Coefficient    =   MatrixMajor::Coefficient;
+    type Coefficient    =   MatrixRows::Coefficient;
     
-    type RowIndex       =   MatrixMajor::RowIndex;          // The type key used to look up rows.  Matrices can have rows indexed by anything: integers, simplices, strings, etc.
-    type ColumnIndex    =   MatrixMajor::ColumnIndex;       // The type of column indices
+    type RowIndex       =   MatrixRows::RowIndex;          // The type key used to look up rows.  Matrices can have rows indexed by anything: integers, simplices, strings, etc.
+    type ColumnIndex    =   MatrixRows::ColumnIndex;       // The type of column indices
     
-    type RowEntry       =   MatrixMajor::RowEntry;          // The type of entries in each row; these are essentially pairs of form `(column_index, coefficient)`
-    type ColumnEntry    =   MatrixMinor::RowEntry;          // The type of entries in each column; these are essentially pairs of form `(row_index, coefficient)`
+    type RowEntry       =   MatrixRows::RowEntry;          // The type of entries in each row; these are essentially pairs of form `(column_index, coefficient)`
+    type ColumnEntry    =   MatrixColumns::RowEntry;          // The type of entries in each column; these are essentially pairs of form `(row_index, coefficient)`
     
 
     
     type Row =              // What you get when you ask for a row.
-                            MatrixMajor::Row;
-    type RowIter =          // What you get when you call `row.into_iter()`, where `row` is a row
-                            MatrixMajor::RowIter;
+                            MatrixRows::Row;
     type RowReverse =       // What you get when you ask for a row with the order of entries reversed
-                            MatrixMajor::RowReverse;
-    type RowReverseIter =   // What you get when you call `row_reverse.into_iter()`, where `row_reverse` is a reversed row (which is a row with order of entries reversed)
-                            MatrixMajor::RowReverseIter;
+                            MatrixRows::RowReverse;
     type Column =           // What you get when you ask for a column
-                            MatrixMinor::Row;
-    type ColumnIter =       // What you get when you call `column.into_iter()`, where `column` is a column
-                            MatrixMinor::RowIter;
+                            MatrixColumns::Row;
     type ColumnReverse =    // What you get when you ask for a column with the order of entries reversed                             
-                            MatrixMinor::RowReverse;
-    type ColumnReverseIter =// What you get when you call `column_reverse.into_iter()`, where `column_reverse` is a reversed column (which is a column with order of entries reversed)
-                            MatrixMinor::RowReverseIter;
+                            MatrixColumns::RowReverse;
 
-    fn entry(                   & self,  row: Self::RowIndex, column: Self::ColumnIndex )   ->  Option< Self::Coefficient >
-        { self.matrix_major.entry( row, column ) }
+    /// Uses the row-major matrix to look up an entry.
+    fn structural_nonzero_entry(                   &   self, row:   & Self::RowIndex, column: & Self::ColumnIndex ) ->  Option< Self::Coefficient >
+        { self.matrix_rows.structural_nonzero_entry( row, column ) }
 
-    fn row(                     & self,  index: Self::RowIndex    )   -> Self::Row
-        { self.matrix_major.row( index ) }
-    fn row_opt(                 & self,  index: Self::RowIndex    )   -> Option<Self::Row>
-        { self.matrix_major.row_opt( index ) }
-    fn row_reverse(             & self,  index: Self::RowIndex    )   -> Self::RowReverse
-        { self.matrix_major.row_reverse( index ) }
-    fn row_reverse_opt(         & self,  index: Self::RowIndex    )   -> Option<Self::RowReverse>
-        { self.matrix_major.row_reverse_opt( index ) }    
+    fn row(                     &self,  index: &Self::RowIndex    )   -> Self::Row
+        { self.matrix_rows.row( index ) }
+    fn row_reverse(             &self,  index: &Self::RowIndex    )   -> Self::RowReverse
+        { self.matrix_rows.row_reverse( index ) }
     
-    fn column(                  & self,  index: Self::ColumnIndex )   -> Self::Column
-        { self.matrix_minor.row(index) }
-    fn column_opt(              & self,  index: Self::ColumnIndex )   -> Option<Self::Column>
-        { self.matrix_minor.row_opt(index) }    
-    fn column_reverse(          & self,  index: Self::ColumnIndex )   -> Self::ColumnReverse
-        { self.matrix_minor.row_reverse(index) }
-    fn column_reverse_opt(      & self,  index: Self::ColumnIndex )   -> Option<Self::ColumnReverse>
-        { self.matrix_minor.row_reverse_opt(index) }    
+    fn column(                  &self,  index: &Self::ColumnIndex )   -> Self::Column
+        { self.matrix_columns.row(index) }
+    // fn column_result(      &   self, index: & Self::ColumnIndex)   -> Result< Self::Column, Self::ColumnIndex >
+    //     { self.matrix_columns.row_result(index) }    
+    fn column_reverse(          &self,  index: &Self::ColumnIndex )   -> Self::ColumnReverse
+        { self.matrix_columns.row_reverse(index) }
+    // fn column_reverse_result(      &   self, index: & Self::ColumnIndex)   -> Result< Self::ColumnReverse, Self::ColumnIndex >
+    //     { self.matrix_columns.row_reverse_result(index) }
+    fn has_row_for_index(     &   self, index: &Self::RowIndex   )   -> bool
+        { self.matrix_rows.has_row_for_index( index ) }
+    fn has_column_for_index(  &   self, index: & Self::ColumnIndex)   -> bool
+        { self.matrix_columns.has_row_for_index( index ) }    
         
 }
 
 
 
-//  INDICES AND COEFFICIENTS
+
+
+
+//  MATRIX ALGEBRA
 //  ---------------------------------------------------------------------
 
-impl < MatrixMajor, MatrixMinor >
+// impl < MatrixRows, MatrixColumns >
+impl < MatrixRows, MatrixColumns, RowIndex, ColumnIndex, Coefficient, RowEntry, ColumnEntry >
 
-    IndicesAndCoefficients for 
+    MatrixAlgebra for 
 
     MatrixBimajor
-        < MatrixMajor, MatrixMinor > 
+        < MatrixRows, MatrixColumns > 
+
+    // where 
+    //      MatrixRows:            MatrixAlgebra,
+    //      MatrixColumns:         MatrixAlgebra<
+    //                                 RowIndex        =   < MatrixRows as MatrixOracle >::ColumnIndex, 
+    //                                 ColumnIndex     =   < MatrixRows as MatrixOracle >::RowIndex,
+    //                                 Coefficient     =   < MatrixRows as MatrixOracle >::Coefficient,
+    //                             >,    
 
     where 
-        MatrixMajor:    IndicesAndCoefficients,
-        MatrixMinor:    IndicesAndCoefficients< 
-                                RowIndex        =   MatrixMajor::ColIndex, 
-                                ColIndex        =   MatrixMajor::RowIndex,
-                                EntryMajor      =   MatrixMajor::EntryMinor,
-                                EntryMinor      =   MatrixMajor::EntryMajor,
-                                Coefficient     =   MatrixMajor::Coefficient,
+        MatrixRows:         MatrixAlgebra<
+                                RowIndex        =   RowIndex, 
+                                ColumnIndex     =   ColumnIndex, 
+                                Coefficient     =   Coefficient, 
+                                RowEntry        =   RowEntry,
+                            >,
+        MatrixColumns:      MatrixAlgebra< 
+                                RowIndex        =   ColumnIndex, 
+                                ColumnIndex     =   RowIndex,
+                                Coefficient     =   Coefficient,
+                                RowEntry        =   ColumnEntry,
                             >,    
+        Coefficient:            Clone + Debug + PartialEq,
+        RowIndex:               Clone + Debug + Eq,
+        ColumnIndex:            Clone + Debug + Eq,
+        RowEntry:               Clone + Debug + PartialEq + KeyValGet< Key = ColumnIndex, Val = Coefficient >,
+        ColumnEntry:            Clone + Debug + PartialEq + KeyValGet< Key = RowIndex, Val = Coefficient >,     
 {
-    type Coefficient    =   MatrixMajor::Coefficient;
-    type EntryMajor     =   MatrixMajor::EntryMajor;
-    type EntryMinor     =   MatrixMajor::EntryMinor;
-    type RowIndex       =   MatrixMajor::RowIndex;
-    type ColIndex       =   MatrixMajor::ColIndex;
-}
+    type RingOperator                                   =   < MatrixRows as MatrixAlgebra >::RingOperator;
 
+    type OrderOperatorForRowEntries                     =   < MatrixRows as MatrixAlgebra >::OrderOperatorForRowEntries;
 
-//  ASCENDING MAJOR VIEWS
-//  ---------------------------------------------------------------------
+    type OrderOperatorForRowIndices                     =   < MatrixColumns as MatrixAlgebra >::OrderOperatorForColumnIndices;
 
+    type OrderOperatorForColumnEntries                  =   < MatrixColumns as MatrixAlgebra >::OrderOperatorForRowEntries;
 
-impl < MatrixMajor, MatrixMinor >
+    type OrderOperatorForColumnIndices                  =   < MatrixRows as MatrixAlgebra >::OrderOperatorForColumnIndices;
 
-    ViewRow for 
-
-    MatrixBimajor
-        < MatrixMajor, MatrixMinor > 
-
-    where 
-        MatrixMajor:    IndicesAndCoefficients + ViewRow,
-        MatrixMinor:    IndicesAndCoefficients< 
-                                RowIndex        =   MatrixMajor::ColIndex, 
-                                ColIndex        =   MatrixMajor::RowIndex,
-                                EntryMajor      =   MatrixMajor::EntryMinor,
-                                EntryMinor      =   MatrixMajor::EntryMajor,
-                                Coefficient     =   MatrixMajor::Coefficient,
-                            >,    
-{
-    type ViewMajor            =   MatrixMajor::ViewMajor;
-    type ViewMajorIntoIter    =   MatrixMajor::ViewMajorIntoIter;    
-
-    fn   view_major( &self, index: Self::RowIndex ) -> Self::ViewMajor {
-        self.matrix_major.view_major(index)
+    fn ring_operator( &self ) -> Self::RingOperator {
+        self.matrix_rows.ring_operator()
     }
-}
 
-
-//  ASCENDING MAJOR VIEWS
-//  ---------------------------------------------------------------------
-
-
-impl < MatrixMajor, MatrixMinor >
-
-    ViewRowAscend for 
-
-    MatrixBimajor
-        < MatrixMajor, MatrixMinor > 
-
-    where 
-        MatrixMajor:    IndicesAndCoefficients + ViewRowAscend,
-        MatrixMinor:    IndicesAndCoefficients< 
-                                RowIndex        =   MatrixMajor::ColIndex, 
-                                ColIndex        =   MatrixMajor::RowIndex,
-                                EntryMajor      =   MatrixMajor::EntryMinor,
-                                EntryMinor      =   MatrixMajor::EntryMajor,
-                                Coefficient     =   MatrixMajor::Coefficient,
-                            >,    
-{
-    type ViewMajorAscend            =   MatrixMajor::ViewMajorAscend;
-    type ViewMajorAscendIntoIter    =   MatrixMajor::ViewMajorAscendIntoIter;    
-
-    fn   view_major_ascend( &self, index: Self::RowIndex ) -> Self::ViewMajorAscend {
-        self.matrix_major.view_major_ascend(index)
+    fn order_operator_for_row_entries( &self ) -> Self::OrderOperatorForRowEntries {
+        self.matrix_rows.order_operator_for_row_entries()
     }
-}
 
-//  DESCENDING MAJOR VIEWS
-//  ---------------------------------------------------------------------
-
-
-impl < MatrixMajor, MatrixMinor >
-
-    ViewRowDescend for 
-
-    MatrixBimajor
-        < MatrixMajor, MatrixMinor > 
-
-    where 
-        MatrixMajor:    IndicesAndCoefficients + ViewRowDescend,
-        MatrixMinor:    IndicesAndCoefficients< 
-                                RowIndex        =   MatrixMajor::ColIndex, 
-                                ColIndex        =   MatrixMajor::RowIndex,
-                                EntryMajor      =   MatrixMajor::EntryMinor,
-                                EntryMinor      =   MatrixMajor::EntryMajor,
-                                Coefficient     =   MatrixMajor::Coefficient,
-                            >,    
-{
-    type ViewMajorDescend            =   MatrixMajor::ViewMajorDescend;
-    type ViewMajorDescendIntoIter    =   MatrixMajor::ViewMajorDescendIntoIter;    
-
-    fn   view_major_descend( &self, index: Self::RowIndex ) -> Self::ViewMajorDescend {
-        self.matrix_major.view_major_descend(index)
+    fn order_operator_for_row_indices( &self ) -> Self::OrderOperatorForRowIndices {
+        self.matrix_columns.order_operator_for_column_indices()
     }
-}
 
+    fn order_operator_for_column_entries( &self ) -> Self::OrderOperatorForColumnEntries {
+        self.matrix_columns.order_operator_for_row_entries()
+    }
 
-//  ASCENDING MINOR VIEWS
-//  ---------------------------------------------------------------------
-
-
-impl < MatrixMajor, MatrixMinor >
-
-    ViewCol for 
-
-    MatrixBimajor
-        < MatrixMajor, MatrixMinor > 
-
-    where 
-        MatrixMajor:    IndicesAndCoefficients,
-        MatrixMinor:    IndicesAndCoefficients< 
-                                RowIndex        =   MatrixMajor::ColIndex, 
-                                ColIndex        =   MatrixMajor::RowIndex,
-                                EntryMajor      =   MatrixMajor::EntryMinor,
-                                EntryMinor      =   MatrixMajor::EntryMajor,
-                                Coefficient     =   MatrixMajor::Coefficient,
-                            >
-                        + ViewRow,
-{
-    type ViewMinor            =   MatrixMinor::ViewMajor;
-    type ViewMinorIntoIter    =   MatrixMinor::ViewMajorIntoIter;    
-
-    fn   view_minor( &self, index: Self::ColIndex ) -> Self::ViewMinor {
-        self.matrix_minor.view_major(index)
+    fn order_operator_for_column_indices( &self ) -> Self::OrderOperatorForColumnIndices {
+        self.matrix_rows.order_operator_for_column_indices()
     }
 }
 
 
 
-//  ASCENDING MINOR VIEWS
+
+
+
+
+//  MATRIX ORACLE OPERATIONS
 //  ---------------------------------------------------------------------
 
 
-impl < MatrixMajor, MatrixMinor >
 
-    ViewColAscend for 
+impl < MatrixRows, MatrixColumns >
 
-    MatrixBimajor
-        < MatrixMajor, MatrixMinor > 
+    MatrixOracleOperations for 
+    
+    MatrixBimajor< MatrixRows, MatrixColumns >
 
-    where 
-        MatrixMajor:    IndicesAndCoefficients,
-        MatrixMinor:    IndicesAndCoefficients< 
-                                RowIndex        =   MatrixMajor::ColIndex, 
-                                ColIndex        =   MatrixMajor::RowIndex,
-                                EntryMajor      =   MatrixMajor::EntryMinor,
-                                EntryMinor      =   MatrixMajor::EntryMajor,
-                                Coefficient     =   MatrixMajor::Coefficient,
-                            >
-                        + ViewRowAscend,
-{
-    type ViewMinorAscend            =   MatrixMinor::ViewMajorAscend;
-    type ViewMinorAscendIntoIter    =   MatrixMinor::ViewMajorAscendIntoIter;    
-
-    fn   view_minor_ascend( &self, index: Self::ColIndex ) -> Self::ViewMinorAscend {
-        self.matrix_minor.view_major_ascend(index)
-    }
-}
-
-//  DESCENDING MINOR VIEWS
-//  ---------------------------------------------------------------------
+{}    
 
 
-impl < MatrixMajor, MatrixMinor >
-
-    ViewColDescend for 
-
-    MatrixBimajor
-        < MatrixMajor, MatrixMinor > 
-
-    where 
-        MatrixMajor:    IndicesAndCoefficients,
-        MatrixMinor:    IndicesAndCoefficients< 
-                                RowIndex        =   MatrixMajor::ColIndex, 
-                                ColIndex        =   MatrixMajor::RowIndex,
-                                EntryMajor      =   MatrixMajor::EntryMinor,
-                                EntryMinor      =   MatrixMajor::EntryMajor,
-                                Coefficient     =   MatrixMajor::Coefficient,
-                            >
-                        + ViewRowDescend,  
-{
-    type ViewMinorDescend            =   MatrixMinor::ViewMajorDescend;
-    type ViewMinorDescendIntoIter    =   MatrixMinor::ViewMajorDescendIntoIter;    
-
-    fn   view_minor_descend( &self, index: Self::ColIndex ) -> Self::ViewMinorDescend {
-        self.matrix_minor.view_major_descend(index)
-    }
-}
 
 
 
@@ -379,8 +259,10 @@ impl < MatrixMajor, MatrixMinor >
 
 /// Similar to [MatrixBimajor], but works with objects that only become oracles when referenced.
 /// 
-/// Stores two matrices, A and B; returns the major views of B as minor views.
-/// For example, calling `view_minor_ascend` on this struct will return `B.view_major_ascend`.
+/// Stores two matrices, A and B; returns the rows of B as columns.
+/// 
+/// For example, calling `self.column(&index)` on this struct will return `(&B).row(&index)`, while calling
+/// `self.row(&index)` will return `(&A).row(&index)`.
 /// 
 /// The key distinction with [MatrixBimajor] is as follows:
 /// - [MatrixBimajor] 
@@ -393,13 +275,16 @@ impl < MatrixMajor, MatrixMinor >
 /// # Motivation
 /// 
 /// We use this matrix type for several operations related to U-match factorization.
-/// (Were it not for this important application, we would likely delete [MatrixBimajorData] from the library.)
+/// In this use case, the [MatrixBimajorData] contains two [VecOfVec](crate::algebra::matrices::types::sorted::VecOfVec) 
+/// objects; these don't implement the [MatrixOracle] trait themselves (and indeed cannot, due to lifetime considerations),
+/// but references to them do!
+/// 
+/// Were it not for this important application, we would likely delete [MatrixBimajorData] from the library.
 /// 
 /// # Example
 /// 
 /// ```
-/// use oat_rust::algebra::matrices::query::{ViewRowAscend, ViewRowDescend, ViewColDescend};
-/// use oat_rust::algebra::matrices::query::{ViewRow, ViewColAscend, ViewCol};        
+/// use oat_rust::algebra::matrices::query::MatrixOracle;     
 /// use oat_rust::algebra::matrices::types::bimajor::MatrixBimajorData;
 /// use oat_rust::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
 /// 
@@ -420,300 +305,153 @@ impl < MatrixMajor, MatrixMinor >
 ///     ];
 /// 
 /// // define matrices
-/// let matrix_data = VecOfVec::new(matrix_data);
+/// let matrix_data = VecOfVec::new(matrix_data).ok().unwrap();
 /// let transpose_data   = matrix_data.transpose_deep(3).unwrap(); // a non-lazy transpose; copies the data
-/// let bimajor_data     =   MatrixBimajorData{ matrix_major_data: matrix_data.clone(), matrix_minor_data: transpose_data };
+/// let bimajor_data     =   MatrixBimajorData{ matrix_rows_data: matrix_data.clone(), matrix_columns_data: transpose_data };
 /// let matrix  = & matrix_data;
 /// 
-/// // check that major views agree
+/// // check that rows agree
 /// for index in 0..4 {
-///     assert_eq!(     matrix.view_major_ascend(index).collect_vec(), 
-///                     ( & bimajor_data ).view_major_ascend(index).collect_vec(),     );
-///     assert_eq!(     matrix.view_major_descend(index).collect_vec(), 
-///                     ( & bimajor_data ).view_major_descend(index).collect_vec(),    );                            
-///     assert_eq!(     matrix.view_major(index).collect_vec(), 
-///                     ( & bimajor_data ).view_major(index).collect_vec(),            ); 
+///     assert_eq!(     matrix.row(&index).collect_vec(), 
+///                     ( & bimajor_data ).row(&index).collect_vec(),     );
+///     assert_eq!(     matrix.row_reverse(&index).collect_vec(), 
+///                     ( & bimajor_data ).row_reverse(&index).collect_vec(),    );                            
+///     assert_eq!(     matrix.row(&index).collect_vec(), 
+///                     ( & bimajor_data ).row(&index).collect_vec(),            ); 
 /// }
 /// 
 /// // check that minor  views agree
 /// for index in 0..3 {
-///     assert_eq!(     matrix.view_minor_ascend(index).collect_vec(), 
-///                     ( & bimajor_data ).view_minor_ascend(index).collect_vec(),     );
-///     assert_eq!(     matrix.view_minor_descend(index).collect_vec(), 
-///                     ( & bimajor_data ).view_minor_descend(index).collect_vec(),    );                            
-///     assert_eq!(     matrix.view_minor(index).collect_vec(), 
-///                     ( & bimajor_data ).view_minor(index).collect_vec(),            );
+///     assert_eq!(     matrix.column(&index).collect_vec(), 
+///                     ( & bimajor_data ).column(&index).collect_vec(),     );
+///     assert_eq!(     matrix.column_reverse(&index).collect_vec(), 
+///                     ( & bimajor_data ).column_reverse(&index).collect_vec(),    );                            
+///     assert_eq!(     matrix.column(&index).collect_vec(), 
+///                     ( & bimajor_data ).column(&index).collect_vec(),            );
 /// }                         
 /// ```        
 #[derive(new,Clone,Copy,Debug,Getters,Dissolve,Eq,PartialEq)]
-pub struct MatrixBimajorData< MatrixMajor, MatrixMinor >
+pub struct MatrixBimajorData< MatrixRows, MatrixColumns >
 {
-    pub matrix_major_data:  MatrixMajor,
-    pub matrix_minor_data:  MatrixMinor,
+    pub matrix_rows_data:       MatrixRows,
+    pub matrix_columns_data:    MatrixColumns,
 }
 
 
 //  MATRIX ORACLE
 //  ---------------------------------------------------------------------
 
-impl < 'a, MatrixMajor, MatrixMinor >
+impl < 'a, MatrixRows, MatrixColumns, RowIndex, ColumnIndex, Coefficient, RowEntry, ColumnEntry >
 
     MatrixOracle for 
 
     &'a MatrixBimajorData
-        < MatrixMajor, MatrixMinor > 
+        < MatrixRows, MatrixColumns > 
 
     where 
-        &'a MatrixMajor:    MatrixOracle,
-        &'a MatrixMinor:    MatrixOracle< 
-                                RowIndex        =   < &'a MatrixMajor as MatrixOracle >::ColumnIndex, 
-                                ColumnIndex     =   < &'a MatrixMajor as MatrixOracle >::RowIndex,
-                                Coefficient     =   < &'a MatrixMajor as MatrixOracle >::Coefficient,
+        &'a MatrixRows:     MatrixOracle<
+                                RowIndex        =   RowIndex, 
+                                ColumnIndex     =   ColumnIndex, 
+                                Coefficient     =   Coefficient, 
+                                RowEntry        =   RowEntry,
+                            >,
+        &'a MatrixColumns:  MatrixOracle< 
+                                RowIndex        =   ColumnIndex, 
+                                ColumnIndex     =   RowIndex,
+                                Coefficient     =   Coefficient,
+                                RowEntry        =   ColumnEntry,
                             >,    
+        Coefficient:            Clone + Debug + PartialEq,
+        RowIndex:               Clone + Debug + Eq,
+        ColumnIndex:            Clone + Debug + Eq,
+        RowEntry:               Clone + Debug + PartialEq + KeyValGet< Key = ColumnIndex, Val = Coefficient >,
+        ColumnEntry:            Clone + Debug + PartialEq + KeyValGet< Key = RowIndex, Val = Coefficient >,        
 {
-    type Coefficient        =   <&'a MatrixMajor as MatrixOracle >::Coefficient;    
-    type RowIndex           =   <&'a MatrixMajor as MatrixOracle >::RowIndex;          // The type key used to look up rows.  Matrices can have rows indexed by anything: integers, simplices, strings, etc.
-    type ColumnIndex        =   <&'a MatrixMajor as MatrixOracle >::ColumnIndex;       // The type of column indices    
-    type RowEntry           =   <&'a MatrixMajor as MatrixOracle >::RowEntry;          // The type of entries in each row; these are essentially pairs of form `(column_index, coefficient)`
-    type ColumnEntry        =   <&'a MatrixMinor as MatrixOracle >::RowEntry;          // The type of entries in each column; these are essentially pairs of form `(row_index, coefficient)`                            
-    type Row                =   <&'a MatrixMajor as MatrixOracle >::Row;       // What you get when you ask for a row.                            
-    type RowIter            =   <&'a MatrixMajor as MatrixOracle >::RowIter;   // What you get when you call `row.into_iter()`, where `row` is a row                            
-    type RowReverse         =   <&'a MatrixMajor as MatrixOracle >::RowReverse;// What you get when you ask for a row with the order of entries reversed                            
-    type RowReverseIter     =   <&'a MatrixMajor as MatrixOracle >::RowReverseIter;// What you get when you call `row_reverse.into_iter()`, where `row_reverse` is a reversed row (which is a row with order of entries reversed)                                
-    type Column             =   <&'a MatrixMinor as MatrixOracle >::Row;// What you get when you ask for a column                            
-    type ColumnIter         =   <&'a MatrixMinor as MatrixOracle >::RowIter;// What you get when you call `column.into_iter()`, where `column` is a column                            
-    type ColumnReverse      =   <&'a MatrixMinor as MatrixOracle >::RowReverse;// What you get when you ask for a column with the order of entries reversed                                                         
-    type ColumnReverseIter  =   <&'a MatrixMinor as MatrixOracle >::RowReverseIter;// What you get when you call `column_reverse.into_iter()`, where `column_reverse` is a reversed column (which is a column with order of entries reversed)
+    type Coefficient        =   Coefficient;    
+    type RowIndex           =   RowIndex;          // The type key used to look up rows.  Matrices can have rows indexed by anything: integers, simplices, strings, etc.
+    type ColumnIndex        =   ColumnIndex;       // The type of column indices    
+    type RowEntry           =   RowEntry;          // The type of entries in each row; these are essentially pairs of form `(column_index, coefficient)`
+    type ColumnEntry        =   ColumnEntry;          // The type of entries in each column; these are essentially pairs of form `(row_index, coefficient)`                            
+    type Row                =   <&'a MatrixRows as MatrixOracle >::Row;       // What you get when you ask for a row.                            
+    type RowReverse         =   <&'a MatrixRows as MatrixOracle >::RowReverse;// What you get when you ask for a row with the order of entries reversed                            
+    type Column             =   <&'a MatrixColumns as MatrixOracle >::Row;// What you get when you ask for a column                            
+    type ColumnReverse      =   <&'a MatrixColumns as MatrixOracle >::RowReverse;// What you get when you ask for a column with the order of entries reversed                                                         
                         
-    fn entry(                   & self,  row: Self::RowIndex, column: Self::ColumnIndex )   ->  Option< Self::Coefficient >
-        { ( & self.matrix_major_data ).entry( row, column ) }
-    fn row(                     & self,  index: Self::RowIndex    )   -> Self::Row
-        { ( & self.matrix_major_data ).row( index ) }
-    fn row_opt(                 & self,  index: Self::RowIndex    )   -> Option<Self::Row>
-        { ( & self.matrix_major_data ).row_opt( index ) }
-    fn row_reverse(             & self,  index: Self::RowIndex    )   -> Self::RowReverse
-        { ( & self.matrix_major_data ).row_reverse( index ) }
-    fn row_reverse_opt(         & self,  index: Self::RowIndex    )   -> Option<Self::RowReverse>
-        { ( & self.matrix_major_data ).row_reverse_opt( index ) }        
-    fn column(                  & self,  index: Self::ColumnIndex )   -> Self::Column
-        { ( & self.matrix_minor_data ).row(index) }
-    fn column_opt(              & self,  index: Self::ColumnIndex )   -> Option<Self::Column>
-        { ( & self.matrix_minor_data ).row_opt(index) }    
-    fn column_reverse(          & self,  index: Self::ColumnIndex )   -> Self::ColumnReverse
-        { ( & self.matrix_minor_data ).row_reverse(index) }
-    fn column_reverse_opt(      & self,  index: Self::ColumnIndex )   -> Option<Self::ColumnReverse>
-        { ( & self.matrix_minor_data ).row_reverse_opt(index) }    
-        
+    fn structural_nonzero_entry(                   &   self, row:   & Self::RowIndex, column: & Self::ColumnIndex ) ->  Option< Self::Coefficient >
+        { ( & self.matrix_rows_data ).structural_nonzero_entry( row, column ) }
+    fn has_row_for_index(     &   self, index: &Self::RowIndex   )   -> bool
+        { ( & self.matrix_rows_data ).has_row_for_index( index ) }
+    fn has_column_for_index(  &   self, index: & Self::ColumnIndex)   -> bool
+        { ( & self.matrix_columns_data ).has_row_for_index( index ) }      
+    fn row(                     &self,  index: &Self::RowIndex    )   -> Self::Row
+        { ( & self.matrix_rows_data ).row( index ) }
+    fn row_reverse(             &self,  index: &Self::RowIndex    )   -> Self::RowReverse
+        { ( & self.matrix_rows_data ).row_reverse( index ) }
+    fn column(                  &self,  index: &Self::ColumnIndex )   -> Self::Column
+        { ( & self.matrix_columns_data ).row(index) }
+    fn column_reverse(          &self,  index: &Self::ColumnIndex )   -> Self::ColumnReverse
+        { ( & self.matrix_columns_data ).row_reverse(index) }        
 }
 
 
 
-//  INDICES AND COEFFICIENTS
+//  MATRIX ALGEBRA
 //  ---------------------------------------------------------------------
 
-impl < 'a, MatrixMajor, MatrixMinor >
+impl < 'a, MatrixRows, MatrixColumns, RowIndex, ColumnIndex, Coefficient, RowEntry, ColumnEntry >
 
-    IndicesAndCoefficients for 
+    MatrixAlgebra for 
 
     &'a MatrixBimajorData
-        < MatrixMajor, MatrixMinor > 
+        < MatrixRows, MatrixColumns > 
 
     where 
-        &'a MatrixMajor:    IndicesAndCoefficients,
-        &'a MatrixMinor:    IndicesAndCoefficients< 
-                                RowIndex        =   < &'a MatrixMajor as IndicesAndCoefficients >::ColIndex, 
-                                ColIndex        =   < &'a MatrixMajor as IndicesAndCoefficients >::RowIndex,
-                                EntryMajor      =   < &'a MatrixMajor as IndicesAndCoefficients >::EntryMinor,
-                                EntryMinor      =   < &'a MatrixMajor as IndicesAndCoefficients >::EntryMajor,
-                                Coefficient     =   < &'a MatrixMajor as IndicesAndCoefficients >::Coefficient,
+        &'a MatrixRows:     MatrixAlgebra<
+                                RowIndex        =   RowIndex, 
+                                ColumnIndex     =   ColumnIndex, 
+                                Coefficient     =   Coefficient, 
+                                RowEntry        =   RowEntry,
+                            >,
+        &'a MatrixColumns:  MatrixAlgebra< 
+                                RowIndex        =   ColumnIndex, 
+                                ColumnIndex     =   RowIndex,
+                                Coefficient     =   Coefficient,
+                                RowEntry        =   ColumnEntry,
                             >,    
+        Coefficient:            Clone + Debug + PartialEq,
+        RowIndex:               Clone + Debug + Eq,
+        ColumnIndex:            Clone + Debug + Eq,
+        RowEntry:               Clone + Debug + PartialEq + KeyValGet< Key = ColumnIndex, Val = Coefficient >,
+        ColumnEntry:            Clone + Debug + PartialEq + KeyValGet< Key = RowIndex, Val = Coefficient >,        
 {
-    type Coefficient    =   < &'a MatrixMajor as IndicesAndCoefficients >::Coefficient;
-    type EntryMajor     =   < &'a MatrixMajor as IndicesAndCoefficients >::EntryMajor;
-    type EntryMinor     =   < &'a MatrixMajor as IndicesAndCoefficients >::EntryMinor;
-    type RowIndex       =   < &'a MatrixMajor as IndicesAndCoefficients >::RowIndex;
-    type ColIndex       =   < &'a MatrixMajor as IndicesAndCoefficients >::ColIndex;
-}
+    type RingOperator                                   =   < &'a MatrixRows as MatrixAlgebra >::RingOperator;
 
+    type OrderOperatorForRowEntries                     =   < &'a MatrixRows as MatrixAlgebra >::OrderOperatorForRowEntries;
 
-//  MAJOR VIEWS
-//  ---------------------------------------------------------------------
+    type OrderOperatorForRowIndices                     =   < &'a MatrixColumns as MatrixAlgebra >::OrderOperatorForColumnIndices;
 
+    type OrderOperatorForColumnEntries                  =   < &'a MatrixColumns as MatrixAlgebra >::OrderOperatorForRowEntries;
 
-impl < 'a, MatrixMajor, MatrixMinor >
+    type OrderOperatorForColumnIndices                  =   < &'a MatrixRows as MatrixAlgebra >::OrderOperatorForColumnIndices;
 
-    ViewRow for 
-
-    &'a MatrixBimajorData
-        < MatrixMajor, MatrixMinor > 
-
-    where 
-        &'a MatrixMajor:    IndicesAndCoefficients + ViewRow,
-        &'a MatrixMinor:    IndicesAndCoefficients< 
-                                RowIndex        =   < &'a MatrixMajor as IndicesAndCoefficients >::ColIndex, 
-                                ColIndex        =   < &'a MatrixMajor as IndicesAndCoefficients >::RowIndex,
-                                EntryMajor      =   < &'a MatrixMajor as IndicesAndCoefficients >::EntryMinor,
-                                EntryMinor      =   < &'a MatrixMajor as IndicesAndCoefficients >::EntryMajor,
-                                Coefficient     =   < &'a MatrixMajor as IndicesAndCoefficients >::Coefficient,
-                            >,   
-{
-    type ViewMajor            =   < &'a MatrixMajor as ViewRow>::ViewMajor;
-    type ViewMajorIntoIter    =   < &'a MatrixMajor as ViewRow>::ViewMajorIntoIter;    
-
-    fn   view_major( &self, index: Self::RowIndex ) -> Self::ViewMajor {
-        return (&self.matrix_major_data).view_major(index)
+    fn ring_operator( &self ) -> Self::RingOperator {
+        (& self.matrix_rows_data).ring_operator()
     }
-}
 
-
-//  ASCENDING MAJOR VIEWS
-//  ---------------------------------------------------------------------
-
-
-impl < 'a, MatrixMajor, MatrixMinor >
-
-    ViewRowAscend for 
-
-    &'a MatrixBimajorData
-        < MatrixMajor, MatrixMinor > 
-
-    where 
-        &'a MatrixMajor:    IndicesAndCoefficients + ViewRowAscend,
-        &'a MatrixMinor:    IndicesAndCoefficients< 
-                                RowIndex        =   < &'a MatrixMajor as IndicesAndCoefficients >::ColIndex, 
-                                ColIndex        =   < &'a MatrixMajor as IndicesAndCoefficients >::RowIndex,
-                                EntryMajor      =   < &'a MatrixMajor as IndicesAndCoefficients >::EntryMinor,
-                                EntryMinor      =   < &'a MatrixMajor as IndicesAndCoefficients >::EntryMajor,
-                                Coefficient     =   < &'a MatrixMajor as IndicesAndCoefficients >::Coefficient,
-                            >,  
-{
-    type ViewMajorAscend            =   < &'a MatrixMajor as ViewRowAscend>::ViewMajorAscend;
-    type ViewMajorAscendIntoIter    =   < &'a MatrixMajor as ViewRowAscend>::ViewMajorAscendIntoIter;    
-
-    fn   view_major_ascend( &self, index: Self::RowIndex ) -> Self::ViewMajorAscend {
-        return (&self.matrix_major_data).view_major_ascend(index)
+    fn order_operator_for_row_entries( &self ) -> Self::OrderOperatorForRowEntries {
+        (&self.matrix_rows_data).order_operator_for_row_entries()
     }
-}
 
-//  DESCENDING MAJOR VIEWS
-//  ---------------------------------------------------------------------
-
-
-impl < 'a, MatrixMajor, MatrixMinor >
-
-    ViewRowDescend for 
-
-    &'a MatrixBimajorData
-        < MatrixMajor, MatrixMinor > 
-
-    where 
-        &'a MatrixMajor:    IndicesAndCoefficients + ViewRowDescend,
-        &'a MatrixMinor:    IndicesAndCoefficients< 
-                                RowIndex        =   < &'a MatrixMajor as IndicesAndCoefficients >::ColIndex, 
-                                ColIndex        =   < &'a MatrixMajor as IndicesAndCoefficients >::RowIndex,
-                                EntryMajor      =   < &'a MatrixMajor as IndicesAndCoefficients >::EntryMinor,
-                                EntryMinor      =   < &'a MatrixMajor as IndicesAndCoefficients >::EntryMajor,
-                                Coefficient     =   < &'a MatrixMajor as IndicesAndCoefficients >::Coefficient,
-                            >,  
-{
-    type ViewMajorDescend            =   < &'a MatrixMajor as ViewRowDescend>::ViewMajorDescend;
-    type ViewMajorDescendIntoIter    =   < &'a MatrixMajor as ViewRowDescend>::ViewMajorDescendIntoIter;      
-
-    fn   view_major_descend( &self, index: Self::RowIndex ) -> Self::ViewMajorDescend {
-        return (&self.matrix_major_data).view_major_descend(index)
+    fn order_operator_for_row_indices( &self ) -> Self::OrderOperatorForRowIndices {
+        (&self.matrix_columns_data).order_operator_for_column_indices()
     }
-}
 
-
-//  MINOR VIEWS
-//  ---------------------------------------------------------------------
-
-
-impl < 'a, MatrixMajor, MatrixMinor >
-
-    ViewCol for 
-
-    &'a MatrixBimajorData
-        < MatrixMajor, MatrixMinor > 
-
-    where 
-        &'a MatrixMajor:    IndicesAndCoefficients,
-        &'a MatrixMinor:    IndicesAndCoefficients< 
-                                RowIndex        =   < &'a MatrixMajor as IndicesAndCoefficients >::ColIndex, 
-                                ColIndex        =   < &'a MatrixMajor as IndicesAndCoefficients >::RowIndex,
-                                EntryMajor      =   < &'a MatrixMajor as IndicesAndCoefficients >::EntryMinor,
-                                EntryMinor      =   < &'a MatrixMajor as IndicesAndCoefficients >::EntryMajor,
-                                Coefficient     =   < &'a MatrixMajor as IndicesAndCoefficients >::Coefficient,
-                            >
-                            + ViewRow, 
-{
-    type ViewMinor            =   < &'a MatrixMinor as ViewRow>::ViewMajor;
-    type ViewMinorIntoIter    =   < &'a MatrixMinor as ViewRow>::ViewMajorIntoIter;
-
-    fn   view_minor( &self, index: Self::ColIndex ) -> Self::ViewMinor {
-        return ( & self.matrix_minor_data ).view_major(index)
+    fn order_operator_for_column_entries( &self ) -> Self::OrderOperatorForColumnEntries {
+        (&self.matrix_columns_data).order_operator_for_row_entries()
     }
-}
 
-
-
-//  ASCENDING MINOR VIEWS
-//  ---------------------------------------------------------------------
-
-
-impl < 'a, MatrixMajor, MatrixMinor >
-
-    ViewColAscend for 
-
-    &'a MatrixBimajorData
-        < MatrixMajor, MatrixMinor > 
-
-    where 
-        &'a MatrixMajor:    IndicesAndCoefficients,
-        &'a MatrixMinor:    IndicesAndCoefficients< 
-                                RowIndex        =   < &'a MatrixMajor as IndicesAndCoefficients >::ColIndex, 
-                                ColIndex        =   < &'a MatrixMajor as IndicesAndCoefficients >::RowIndex,
-                                EntryMajor      =   < &'a MatrixMajor as IndicesAndCoefficients >::EntryMinor,
-                                EntryMinor      =   < &'a MatrixMajor as IndicesAndCoefficients >::EntryMajor,
-                                Coefficient     =   < &'a MatrixMajor as IndicesAndCoefficients >::Coefficient,
-                            >
-                            + ViewRowAscend, 
-{
-    type ViewMinorAscend            =   < &'a MatrixMinor as ViewRowAscend>::ViewMajorAscend;
-    type ViewMinorAscendIntoIter    =   < &'a MatrixMinor as ViewRowAscend>::ViewMajorAscendIntoIter;  
-
-    fn   view_minor_ascend( &self, index: Self::ColIndex ) -> Self::ViewMinorAscend {
-        return ( & self.matrix_minor_data ).view_major_ascend(index)
-    }
-}
-
-//  DESCENDING MINOR VIEWS
-//  ---------------------------------------------------------------------
-
-
-impl < 'a, MatrixMajor, MatrixMinor >
-
-    ViewColDescend for 
-
-    &'a MatrixBimajorData
-        < MatrixMajor, MatrixMinor > 
-
-    where 
-        &'a MatrixMajor:    IndicesAndCoefficients,
-        &'a MatrixMinor:    IndicesAndCoefficients< 
-                                RowIndex        =   < &'a MatrixMajor as IndicesAndCoefficients >::ColIndex, 
-                                ColIndex        =   < &'a MatrixMajor as IndicesAndCoefficients >::RowIndex,
-                                EntryMajor      =   < &'a MatrixMajor as IndicesAndCoefficients >::EntryMinor,
-                                EntryMinor      =   < &'a MatrixMajor as IndicesAndCoefficients >::EntryMajor,
-                                Coefficient     =   < &'a MatrixMajor as IndicesAndCoefficients >::Coefficient,
-                            >
-                            + ViewRowDescend, 
-{
-    type ViewMinorDescend            =   < &'a MatrixMinor as ViewRowDescend >::ViewMajorDescend;
-    type ViewMinorDescendIntoIter    =   < &'a MatrixMinor as ViewRowDescend >::ViewMajorDescendIntoIter;   
-
-    fn   view_minor_descend( &self, index: Self::ColIndex ) -> Self::ViewMinorDescend {
-        return ( & self.matrix_minor_data ).view_major_descend(index)
+    fn order_operator_for_column_indices( &self ) -> Self::OrderOperatorForColumnIndices {
+        (&self.matrix_rows_data).order_operator_for_column_indices()
     }
 }
 
@@ -721,6 +459,20 @@ impl < 'a, MatrixMajor, MatrixMinor >
 
 
 
+
+
+//  MATRIX ORACLE OPERATIONS
+//  ---------------------------------------------------------------------
+
+
+
+impl < 'a, MatrixRows, MatrixColumns >
+
+    MatrixOracleOperations for 
+    
+    &'a MatrixBimajor< MatrixRows, MatrixColumns >
+
+{}    
 
 
 
@@ -741,7 +493,7 @@ impl < 'a, MatrixMajor, MatrixMinor >
 
 #[cfg(test)]
 mod tests {
-    use crate::algebra::matrices::types::bimajor::MatrixBimajorData;
+    
 
     
 
@@ -750,9 +502,8 @@ mod tests {
     #[test]
     fn test_matrix_bimajor() {   
 
-        use crate::algebra::matrices::operations::MatrixOperations;   
-        use crate::algebra::matrices::query::{ViewRowAscend, ViewRowDescend, ViewColDescend};
-        use crate::algebra::matrices::query::{ViewRow, ViewColAscend, ViewCol};        
+        use crate::algebra::matrices::operations::MatrixOracleOperations;   
+        use crate::algebra::matrices::query::MatrixOracle;
         use crate::algebra::matrices::types::bimajor::MatrixBimajor;
         use crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
 
@@ -774,28 +525,29 @@ mod tests {
         
         // define matrices
         let matrix_data = VecOfVec::new(matrix_data);
-        let matrix = & matrix_data;
+        let matrix = & matrix_data.unwrap();
         let transpose   = matrix.transpose();
-        let bimajor     =   MatrixBimajor{ matrix_major: &matrix, matrix_minor: & transpose };
+        let bimajor     =   MatrixBimajor{ matrix_rows: &matrix, matrix_columns: & transpose };
         
-        // check that major views agree
+        // check that rows agree
         for index in 0..4 {
-            assert_eq!(     matrix.view_major_ascend(index).collect_vec(), 
-                            bimajor.view_major_ascend(index).collect_vec(),     );
-            assert_eq!(     matrix.view_major_descend(index).collect_vec(), 
-                            bimajor.view_major_descend(index).collect_vec(),    );                            
-            assert_eq!(     matrix.view_major(index).collect_vec(), 
-                            bimajor.view_major(index).collect_vec(),            ); 
+            assert_eq!(     matrix.row(&index).collect_vec(), 
+                            bimajor.row(&index).collect_vec(),     );
+            assert_eq!(     matrix.row_reverse(&index).collect_vec(), 
+                            bimajor.row_reverse(&index).collect_vec(),    );                            
+            assert_eq!(     matrix.row(&index).collect_vec(), 
+                            bimajor.row(&index).collect_vec(),            ); 
         }
 
         // check that minor  views agree
         for index in 0..3 {
-            assert_eq!(     matrix.view_minor_ascend(index).collect_vec(), 
-                            bimajor.view_minor_ascend(index).collect_vec(),     );
-            assert_eq!(     matrix.view_minor_descend(index).collect_vec(), 
-                            bimajor.view_minor_descend(index).collect_vec(),    );                            
-            assert_eq!(     matrix.view_minor(index).collect_vec(), 
-                            bimajor.view_minor(index).collect_vec(),            );
+            let index = &index;
+            assert_eq!(     matrix.column(&index).collect_vec(), 
+                            bimajor.column(&index).collect_vec(),     );
+            assert_eq!(     matrix.column_reverse(&index).collect_vec(), 
+                            bimajor.column_reverse(&index).collect_vec(),    );                            
+            assert_eq!(     matrix.column(&index).collect_vec(), 
+                            bimajor.column(&index).collect_vec(),            );
         }                    
     }  
 
@@ -809,8 +561,7 @@ mod tests {
     #[test]
     fn test_matrix_bimajor_data() {   
  
-        use crate::algebra::matrices::query::{ViewRowAscend, ViewRowDescend, ViewColDescend};
-        use crate::algebra::matrices::query::{ViewRow, ViewColAscend, ViewCol};        
+        use crate::algebra::matrices::query::MatrixOracle;       
         use crate::algebra::matrices::types::bimajor::MatrixBimajorData;
         use crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
 
@@ -831,29 +582,29 @@ mod tests {
             ];
         
         // define matrices
-        let matrix_data = VecOfVec::new(matrix_data);
+        let matrix_data = VecOfVec::new(matrix_data).unwrap();
         let transpose_data   = matrix_data.transpose_deep(3).unwrap(); // a non-lazy transpose; copies the data
-        let bimajor_data     =   MatrixBimajorData{ matrix_major_data: matrix_data.clone(), matrix_minor_data: transpose_data };
+        let bimajor_data     =   MatrixBimajorData{ matrix_rows_data: matrix_data.clone(), matrix_columns_data: transpose_data };
         let matrix  = & matrix_data;
 
-        // check that major views agree
+        // check that rows agree
         for index in 0..4 {
-            assert_eq!(     matrix.view_major_ascend(index).collect_vec(), 
-                            ( & bimajor_data ).view_major_ascend(index).collect_vec(),     );
-            assert_eq!(     matrix.view_major_descend(index).collect_vec(), 
-                            ( & bimajor_data ).view_major_descend(index).collect_vec(),    );                            
-            assert_eq!(     matrix.view_major(index).collect_vec(), 
-                            ( & bimajor_data ).view_major(index).collect_vec(),            ); 
+            assert_eq!(     matrix.row(&index).collect_vec(), 
+                            ( & bimajor_data ).row(&index).collect_vec(),     );
+            assert_eq!(     matrix.row_reverse(&index).collect_vec(), 
+                            ( & bimajor_data ).row_reverse(&index).collect_vec(),    );                            
+            assert_eq!(     matrix.row(&index).collect_vec(), 
+                            ( & bimajor_data ).row(&index).collect_vec(),            ); 
         }
 
         // check that minor  views agree
         for index in 0..3 {
-            assert_eq!(     matrix.view_minor_ascend(index).collect_vec(), 
-                            ( & bimajor_data ).view_minor_ascend(index).collect_vec(),     );
-            assert_eq!(     matrix.view_minor_descend(index).collect_vec(), 
-                            ( & bimajor_data ).view_minor_descend(index).collect_vec(),    );                            
-            assert_eq!(     matrix.view_minor(index).collect_vec(), 
-                            ( & bimajor_data ).view_minor(index).collect_vec(),            );
+            assert_eq!(     matrix.column(&index).collect_vec(), 
+                            ( & bimajor_data ).column(&index).collect_vec(),     );
+            assert_eq!(     matrix.column_reverse(&index).collect_vec(), 
+                            ( & bimajor_data ).column_reverse(&index).collect_vec(),    );                            
+            assert_eq!(     matrix.column(&index).collect_vec(), 
+                            ( & bimajor_data ).column(&index).collect_vec(),            );
         }                    
     }  
 

@@ -43,11 +43,11 @@ pub trait EvaluateFunctionRef< Input, Output >{
 /// use oat_rust::utilities::functions::evaluate::IdentityFunction;
 /// use oat_rust::utilities::functions::evaluate::EvaluateFunction;
 /// 
-/// let identity_function = IdentityFunction{};
+/// let identity_function = IdentityFunction;
 /// assert_eq!( 1, identity_function.evaluate_function(1) );
 /// ```
 #[derive(Clone,Copy,Debug,new)]
-pub struct IdentityFunction{}
+pub struct IdentityFunction;
 
 impl < Input > 
 
@@ -71,7 +71,7 @@ impl < Input >
 /// use oat_rust::utilities::functions::evaluate::{IdentityFunction, LogicalNot};
 /// use oat_rust::utilities::functions::evaluate::EvaluateFunction;
 /// 
-/// let negation = LogicalNot::new(IdentityFunction{});
+/// let negation = LogicalNot::new(IdentityFunction);
 /// 
 /// assert!( ! negation.evaluate_function(true)  );
 /// assert!(   negation.evaluate_function(false) );
@@ -123,12 +123,8 @@ impl < T, Input >
 /// let reverser = ReverseVector::new();
 /// assert_eq!( vec![2,1], reverser.evaluate_function(vec![1,2]) );
 /// ```
-#[derive(Clone)]
-pub struct ReverseVector{}
-
-impl ReverseVector{
-    pub fn new() -> ReverseVector { ReverseVector {} }
-}
+#[derive(Clone,Copy,Debug,new)]
+pub struct ReverseVector;
 
 impl < T > 
 
@@ -291,7 +287,7 @@ impl < Input, Output, Function: EvaluateFunction< Input, Output > >
 /// // Map Option< usize > -> Option< usize >
 /// let g = Map{ mapping_rule: f };
 /// let a: Option<usize> = g.evaluate_function( Some(0usize) ); assert_eq!( a, Some(7usize) );
-/// let a: Option<usize> = g.evaluate_function( None         ); assert_eq!( a, None         ); 
+/// let a: Option<usize> = g.evaluate_function( None::<usize>); assert_eq!( a, None         ); 
 ///
 /// // The following will panic, `Map` calls its inner function on a value to return a value, and a vector of length 2 has no way to map the integer 4 to another integer
 /// // let b: Option<usize> = g.evaluate_function(4usize); assert_eq!( b, None         ); 
@@ -299,7 +295,7 @@ impl < Input, Output, Function: EvaluateFunction< Input, Output > >
 /// // Map Option< usize > ->  Option< Option< usize > > with wrapper
 /// let a: Option<Option<usize>> = g.evaluate_function( Some(0usize) ); assert_eq!( a, Some( Some(7usize) ) );
 /// let a: Option<Option<usize>> = g.evaluate_function( Some(4usize) ); assert_eq!( a, Some( None         ) );
-/// let a: Option<Option<usize>> = g.evaluate_function( None         ); assert_eq!( a, None                 );
+/// let a: Option<Option<usize>> = g.evaluate_function( None::<usize>); assert_eq!( a, None                 );
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct Map< MappingRule >{ 
@@ -349,7 +345,7 @@ impl < Input, Output, MappingRule >
 /// let g = AndThen{ mapping_rule: f };
 /// let a: Option<usize> = g.evaluate_function( Some(0usize) ); assert_eq!( a, Some(7usize) );
 /// let a: Option<usize> = g.evaluate_function( Some(4usize) ); assert_eq!( a, None         );
-/// let a: Option<usize> = g.evaluate_function( None         ); assert_eq!( a, None         ); 
+/// let a: Option<usize> = g.evaluate_function( None::<usize>); assert_eq!( a, None         ); 
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct AndThen< MappingRule >{ 
@@ -476,6 +472,113 @@ impl < 'a, Output >
         }        
     }     
 }
+
+
+
+
+//  REFERENCED INPUTS
+//----------------------
+
+//  SUBGRUOP: UNWRAPPED VALUES
+
+
+impl < 'b, Output: Clone > 
+
+    EvaluateFunction
+        < &'b usize, Output > for
+
+    Vec< Output >
+{
+    fn evaluate_function( & self, input: &'b usize ) -> Output {
+        self[ *input ].clone()
+    }    
+}
+
+
+
+impl < 'a, 'b, Output: Clone > 
+
+    EvaluateFunction
+        < &'b usize, Output > for
+
+    &'a Vec< Output >
+{
+    fn evaluate_function( & self, input: &'b usize ) -> Output {
+        self[ *input ].clone()
+    }    
+}
+
+
+
+impl < 'a, 'b, Output > 
+
+    EvaluateFunction
+        < &'b usize, &'a Output > for
+
+    &'a Vec< Output >
+{
+    fn evaluate_function( & self, input: &'b usize ) -> &'a Output {
+        & self[ *input ]
+    }    
+}
+
+
+//  SUBGRUOP: WRAPPED VALUES
+
+
+impl < 'b, Output: Clone > 
+
+    EvaluateFunction
+        < &'b usize, Option< Output > > for
+
+    Vec< Output >
+{
+    fn evaluate_function( & self, input: &'b usize ) -> Option< Output > {
+        match *input < self.len() {
+            true    =>  { Some( self[ *input ].clone() ) },
+            false   =>  { None }
+        }        
+    }    
+}
+
+
+
+impl < 'a, 'b, Output: Clone > 
+
+    EvaluateFunction
+        < &'b usize, Option< Output > > for
+
+    &'a Vec< Output >
+{
+    /// Return `self[input].clone()`.
+    fn evaluate_function( & self, input: &'b usize ) -> Option< Output > {
+        match *input < self.len() {
+            true    =>  { Some( self[ *input ].clone() ) },
+            false   =>  { None }
+        }        
+    }    
+}
+
+
+
+impl < 'a, 'b, Output > 
+
+    EvaluateFunction
+        < &'b usize, Option< &'a Output > > for
+
+    &'a Vec< Output >
+{
+    /// Return `Some( &self[ input ] )` if `input < self.len()`, and `None` otherwise.
+    fn evaluate_function( & self, input: &'b usize ) -> Option< &'a Output > {
+        match *input < self.len() {
+            true    =>  { Some( & self[ *input ] ) },
+            false   =>  { None }
+        }        
+    }     
+}
+
+
+
 
 
 

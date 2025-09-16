@@ -18,10 +18,10 @@ pub fn random_upper_triangular( matrix_size: usize, modulus: usize) -> VecOfVec<
 
     let mut rng = rand::thread_rng(); // this generates random integers
     let mut vec_of_vec = vec![];
-    for majkey in 0 .. matrix_size {
+    for row_index in 0 .. matrix_size {
         let coefficient_leading         =   rng.gen_range( 1 .. modulus );
-        let mut new_vec     =   vec![ (majkey, coefficient_leading) ]; // start with a nonzero diagonal element            
-        for q in majkey+1 .. matrix_size { // fill out the rest of this row of the matrix
+        let mut new_vec     =   vec![ (row_index, coefficient_leading) ]; // start with a nonzero diagonal element            
+        for q in row_index+1 .. matrix_size { // fill out the rest of this row of the matrix
             let coefficient   = rng.gen_range( 0 .. modulus );
             let flag = rng.gen_range(0usize .. 3usize);
             if      flag == 0 { new_vec.push( ( q, 0 )           ) }
@@ -46,10 +46,10 @@ pub fn random_upper_unitriangular( matrix_size: usize, modulus: usize) -> VecOfV
 
     let mut rng = rand::thread_rng(); // this generates random integers
     let mut vec_of_vec = vec![];
-    for majkey in 0 .. matrix_size {
+    for row_index in 0 .. matrix_size {
         let coefficient_leading         =   1;
-        let mut new_vec     =   vec![ (majkey, coefficient_leading) ]; // start with a nonzero diagonal element            
-        for q in majkey+1 .. matrix_size { // fill out the rest of this row of the matrix
+        let mut new_vec     =   vec![ (row_index, coefficient_leading) ]; // start with a nonzero diagonal element            
+        for q in row_index+1 .. matrix_size { // fill out the rest of this row of the matrix
             let coefficient   = rng.gen_range( 0 .. modulus );
             let flag = rng.gen_range(0usize .. 3usize);
             if      flag == 0 { new_vec.push( ( q, 0 )           ) }
@@ -86,18 +86,18 @@ pub fn random_vec_of_vec_simple(
     println!("{} is from a Bernoulli distribution", v);
 
     let mut vecvec = Vec::new(); // initialize empty vector of vectors
-    for keymaj in 0 .. num_indices_major {
-        vecvec.push( Vec::new() ); // push a new vector representing a major view
-        for keymin in 0 .. num_indices_minor { // for each minor index
+    for row_index in 0 .. num_indices_major {
+        vecvec.push( Vec::new() ); // push a new vector representing a row
+        for column_index in 0 .. num_indices_minor { // for each column index
             if d.sample( &mut rand::thread_rng() ) { // add a structural nonzero entry with probability `approximate_density`
                 let coefficient   = match allow_nonstructural_zero{ 
                     true => { rng.gen_range( 0 .. modulus ) },
                     false => { rng.gen_range( 1 .. modulus ) }
                 };
-                vecvec[ keymaj ].push( (keymin, coefficient) );
+                vecvec[ row_index ].push( (column_index, coefficient) );
             }
         }
-        vecvec[ keymaj ].shrink_to_fit();
+        vecvec[ row_index ].shrink_to_fit();
     }
 
     return VecOfVec::new( vecvec )
@@ -128,10 +128,10 @@ pub fn random_upper_triangular_matrix_mod_p
 
     let mut rng = rand::thread_rng(); // this generates random integers
     let mut vec_of_vec = vec![];
-    for majkey in 0 .. matrix_size {
+    for row_index in 0 .. matrix_size {
         let coefficient_leading         =   rng.gen_range( 1 .. modulus );
-        let mut new_vec     =   vec![ (majkey, coefficient_leading) ]; // start with a nonzero diagonal element            
-        for q in majkey+1 .. matrix_size { // fill out the rest of this row of the matrix
+        let mut new_vec     =   vec![ (row_index, coefficient_leading) ]; // start with a nonzero diagonal element            
+        for q in row_index+1 .. matrix_size { // fill out the rest of this row of the matrix
             let coefficient   = rng.gen_range( 1 .. modulus );
             let flag = rng.gen_range(0usize .. 3usize);
             if      flag == 0 { new_vec.push( ( q, 0 )           ) }
@@ -160,9 +160,9 @@ pub fn random_m_by_n_matrix
 
     let mut rng = rand::thread_rng(); // this generates random integers
     let mut vec_of_vec = vec![];
-    for majkey in 0 .. num_rows {
+    for row_index in 0 .. num_rows {
         let mut new_vec     =   vec![]; // start with an empty vector
-        for q in majkey+1 .. num_cols { // fill it in
+        for q in row_index+1 .. num_cols { // fill it in
             let coefficient   = rng.gen_range( 1 .. modulus );
             let flag = rng.gen_range(0usize .. 3usize);
             if      flag == 0 { new_vec.push( ( q, 0 )           ) }

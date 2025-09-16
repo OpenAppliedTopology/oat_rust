@@ -73,9 +73,9 @@
 // //! we require, in addition, that 
 // //! 
 // //! - if `[i,j]` is a diagonal entry of `A[I,J]`, then all entries to the left of `[i,j]` in `A` vanish.
-// //!   - this applies only in cases where we we add major views of `A` to `b`
+// //!   - this applies only in cases where we we add rows of `A` to `b`
 // //! - if `[i,j]` is a diagonal entry of `A[I,J]`, then all entries below `[i,j]`  in `A` vanish.
-// //!   - this applies only in cases where we we add minor views of `A` to `b`
+// //!   - this applies only in cases where we we add columns of `A` to `b`
 // //! 
 // //! In practice, when we use OAT to solve `xA = b`, we do not provide `I` and `J` explicitly;
 // //! rather we note that there are (mutually inverse) bijections `f: I -> J` and `g: J -> I` such that
@@ -93,10 +93,10 @@
 //! 
 //!  
 //! ```
-//! use oat_rust::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
-//! use oat_rust::algebra::matrices::operations::solve::echelon::{EchelonSolverMajorAscendWithMajorKeys, EchelonSolverMinorDescendWithMinorKeys};
-//! use oat_rust::algebra::matrices::operations::multiply::{vector_matrix_multiply_major_ascend_simplified};        
-//! use oat_rust::algebra::rings::operator_structs::field_prime_order::BooleanFieldOperator;
+//! use oat_rust::algebra::matrices::types::{vec_of_vec::sorted::VecOfVec, packet::MatrixAlgebraPacket};
+//! use oat_rust::algebra::matrices::operations::solve::echelon::{RowEchelonSolver, ColumnEchelonSolverReverse};
+//! use oat_rust::algebra::matrices::operations::multiply::{multiply_row_vector_with_matrix};        
+//! use oat_rust::algebra::rings::types::field_prime_order::BooleanField;
 //! use oat_rust::algebra::vectors::operations::VectorOperations;
 //! use oat_rust::utilities::functions::evaluate::EvaluateFunctionFnMutWrapper;
 //! use oat_rust::utilities::order::{OrderOperatorByKey, OrderOperatorByKeyReverse};
@@ -104,18 +104,19 @@
 //! use assert_panic::assert_panic;
 //! 
 //! // define the ring operator
-//! let ring_operator = BooleanFieldOperator::new();
+//! let ring_operator = BooleanField::new();
 //! 
 //! // a matrix A with an invertible upper triangular submatrix
 //! let matrix  =   VecOfVec::new(
-//!                         vec![ 
-//!                             vec![                                     ], 
-//!                             vec![                                     ],                                     
-//!                             vec![ (0,true),  (1,true), (2,true)       ], 
-//!                             vec![            (1,true), (2,true)       ],
-//!                             vec![                      (2,true)       ],                                       
-//!                         ],
-//!                     );    
+//!                     vec![ 
+//!                         vec![                                     ], 
+//!                         vec![                                     ],                                     
+//!                         vec![ (0,true),  (1,true), (2,true)       ], 
+//!                         vec![            (1,true), (2,true)       ],
+//!                         vec![                      (2,true)       ],                                       
+//!                     ],
+//!                 ).ok().unwrap();    
+//! let matrix  =   MatrixAlgebraPacket::with_default_order_and_boolean_coefficients( &matrix );
 //! 
 //! // partial bijection from the column indices of the diagonal elements to their row indices
 //! let partial_bijection = |x: usize| { if x < 3 { Some(x+2) } else { None } };
@@ -124,16 +125,19 @@
 //! let b = vec![ (0,true), (1,true) ];
 //! 
 //! // solver; attempts to solve xA = b for x
-//! let division =  EchelonSolverMajorAscendWithMajorKeys::solve(
+//! let division =  RowEchelonSolver::solve(
 //!                                                                 b.clone(), // entries must appear in strictly ASCENDING order
 //!                                                                 & matrix, // the matrix oracle traits are only implemented for *references* to VecOfVec, not on VecOfVec itself
-//!                                                                 EvaluateFunctionFnMutWrapper::new( partial_bijection ), // maps *matched* minor keys to matched major keys
-//!                                                                 BooleanFieldOperator::new(), // defines the ring operations
+//!                                                                 EvaluateFunctionFnMutWrapper::new( partial_bijection ), // maps *matched* column indices to matched row indices
+//!                                                                 BooleanField::new(), // defines the ring operations
 //!                                                                 OrderOperatorByKey::new(), // an object that asserts (i, s) ≤ (j, t) whenever i ≤ j
 //!                                                             );
 //! 
 //! // multiply the solution with A, and check that the product equals b                               
-//! let product = division.solution().unwrap().multiply_matrix_major_ascend( &matrix, ring_operator, OrderOperatorByKey::new() );
+//! let product     =   division
+//!                         .solution()
+//!                         .unwrap()
+//!                         .multiply_self_as_a_row_vector_with_matrix( &matrix );
 //! assert_eq!( product.collect_vec(), b );   // check the solution, i.e. check that xA = b  
 //! ```
 //! 
@@ -146,9 +150,10 @@
 //! 
 //! ```
 //! # use oat_rust::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
-//! # use oat_rust::algebra::matrices::operations::solve::echelon::{EchelonSolverMajorAscendWithMajorKeys, EchelonSolverMinorDescendWithMinorKeys};
-//! # use oat_rust::algebra::matrices::operations::multiply::{vector_matrix_multiply_major_ascend_simplified};        
-//! # use oat_rust::algebra::rings::operator_structs::field_prime_order::BooleanFieldOperator;
+//! # use oat_rust::algebra::matrices::types::packet::MatrixAlgebraPacket;
+//! # use oat_rust::algebra::matrices::operations::solve::echelon::{RowEchelonSolver, ColumnEchelonSolverReverse};
+//! # use oat_rust::algebra::matrices::operations::multiply::{multiply_row_vector_with_matrix};        
+//! # use oat_rust::algebra::rings::types::field_prime_order::BooleanField;
 //! # use oat_rust::algebra::vectors::operations::VectorOperations;
 //! # use oat_rust::utilities::functions::evaluate::EvaluateFunctionFnMutWrapper;
 //! # use oat_rust::utilities::order::{OrderOperatorByKey, OrderOperatorByKeyReverse};
@@ -165,7 +170,8 @@
 //! #                             vec![            (1,true), (2,true)       ],
 //! #                             vec![                      (2,true)       ],                                       
 //! #                         ],
-//! #                     );  
+//! #                     ).ok().unwrap(); 
+//! # let matrix  =   MatrixAlgebraPacket::with_default_order_and_boolean_coefficients( &matrix ); 
 //! # 
 //! # // the problem vector b
 //! # let b = vec![ (0,true), (1,true) ];
@@ -174,16 +180,19 @@
 //! let partial_bijection = vec![2,3,4]; // or as a vector
 //! # 
 //! # // create a solver to solve xA = b for x
-//! # let division =  EchelonSolverMajorAscendWithMajorKeys::solve(
+//! # let division =  RowEchelonSolver::solve(
 //! #                                                                 b.clone(), // entries must appear in strictly ASCENDING order
 //! #                                                                 & matrix, // the matrix oracle traits are only implemented for *references* to VecOfVec, not on VecOfVec itself
-//! #                                                                 partial_bijection, // maps *matched* minor keys to matched major keys
-//! #                                                                 BooleanFieldOperator::new(), // defines the ring operations
+//! #                                                                 partial_bijection, // maps *matched* column indices to matched row indices
+//! #                                                                 BooleanField::new(), // defines the ring operations
 //! #                                                                 OrderOperatorByKey::new(), // an object that asserts (i, s) ≤ (j, t) whenever i ≤ j
 //! #                                                             );
 //! #                                                         
 //! # // check the solution, i.e. check that xA = b
-//! # let product = division.solution().unwrap().multiply_matrix_major_ascend( &matrix, BooleanFieldOperator::new(), OrderOperatorByKey::new() );
+//! # let product = division
+//!                     .solution()
+//!                     .unwrap()
+//!                     .multiply_self_as_a_row_vector_with_matrix( &matrix );
 //! # assert_eq!( product.collect_vec(), b.clone() );  
 //! ```
 //! 
@@ -191,9 +200,10 @@
 //! 
 //! ```
 //! # use oat_rust::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
-//! # use oat_rust::algebra::matrices::operations::solve::echelon::{EchelonSolverMajorAscendWithMajorKeys, EchelonSolverMinorDescendWithMinorKeys};
-//! # use oat_rust::algebra::matrices::operations::multiply::{vector_matrix_multiply_major_ascend_simplified};        
-//! # use oat_rust::algebra::rings::operator_structs::field_prime_order::BooleanFieldOperator;
+//! # use oat_rust::algebra::matrices::types::packet::MatrixAlgebraPacket;
+//! # use oat_rust::algebra::matrices::operations::solve::echelon::{RowEchelonSolver, ColumnEchelonSolverReverse};
+//! # use oat_rust::algebra::matrices::operations::multiply::{multiply_row_vector_with_matrix};        
+//! # use oat_rust::algebra::rings::types::field_prime_order::BooleanField;
 //! # use oat_rust::algebra::vectors::operations::VectorOperations;
 //! # use oat_rust::utilities::functions::evaluate::EvaluateFunctionFnMutWrapper;
 //! # use oat_rust::utilities::order::{OrderOperatorByKey, OrderOperatorByKeyReverse};
@@ -210,7 +220,8 @@
 //! #                             vec![            (1,true), (2,true)       ],
 //! #                             vec![                      (2,true)       ],                                       
 //! #                         ],
-//! #                     );  
+//! #                     ).ok().unwrap(); 
+//! # let matrix  =   MatrixAlgebraPacket::with_default_order_and_boolean_coefficients( &matrix );
 //! # 
 //! # // the problem vector b
 //! # let b = vec![ (0,true), (1,true) ];
@@ -219,16 +230,18 @@
 //! let partial_bijection = HashMap::from( [(0,2),(1,3),(2,4)] ); // or as a hashmap
 //! # 
 //! # // create a solver to solve xA = b for x
-//! # let division =  EchelonSolverMajorAscendWithMajorKeys::solve(
+//! # let division =  RowEchelonSolver::solve(
 //! #                                                                 b.clone(), // entries must appear in strictly ASCENDING order
 //! #                                                                 & matrix, // the matrix oracle traits are only implemented for *references* to VecOfVec, not on VecOfVec itself
-//! #                                                                 partial_bijection, // maps *matched* minor keys to matched major keys
-//! #                                                                 BooleanFieldOperator::new(), // defines the ring operations
+//! #                                                                 partial_bijection, // maps *matched* column indices to matched row indices
+//! #                                                                 BooleanField::new(), // defines the ring operations
 //! #                                                                 OrderOperatorByKey::new(), // an object that asserts (i, s) ≤ (j, t) whenever i ≤ j
 //! #                                                             );
 //! #                                                         
 //! # // check the solution, i.e. check that xA = b
-//! # let product = division.quotient().multiply_matrix_major_ascend( &matrix, BooleanFieldOperator::new(), OrderOperatorByKey::new() );
+//! # let product = division
+//!                     .quotient()
+//!                     .multiply_self_as_a_row_vector_with_matrix( & matrix );
 //! # assert_eq!( product.collect_vec(), b.clone() );  
 //! ```
 //! 
@@ -241,9 +254,9 @@
 //! 
 //! ```
 //! use oat_rust::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
-//! use oat_rust::algebra::matrices::operations::solve::echelon::{EchelonSolverMajorAscendWithMajorKeys, EchelonSolverMinorDescendWithMinorKeys};
-//! use oat_rust::algebra::matrices::operations::multiply::{vector_matrix_multiply_major_ascend_simplified};        
-//! use oat_rust::algebra::rings::operator_structs::field_prime_order::BooleanFieldOperator;
+//! use oat_rust::algebra::matrices::operations::solve::echelon::{RowEchelonSolver, ColumnEchelonSolverReverse};
+//! use oat_rust::algebra::matrices::operations::multiply::{multiply_row_vector_with_matrix};        
+//! use oat_rust::algebra::rings::types::field_prime_order::BooleanField;
 //! use oat_rust::algebra::vectors::operations::VectorOperations;
 //! use oat_rust::utilities::functions::evaluate::EvaluateFunctionFnMutWrapper;
 //! use oat_rust::utilities::order::{OrderOperatorByKey, OrderOperatorByKeyReverse};
@@ -252,25 +265,31 @@
 //! use assert_panic::assert_panic;
 //! 
 //! let matrix  =   VecOfVec::new(
-//!                         vec![ 
-//!                             vec![                                     ], 
-//!                             vec![                                     ],                                     
-//!                             vec![ (0,true),  (1,true), (2,true)       ], 
-//!                             vec![            (1,true), (2,true)       ],
-//!                             vec![                      (2,true)       ],                                       
-//!                         ],
-//!                     );  
+//!                     vec![ 
+//!                         vec![                                     ], 
+//!                         vec![                                     ],                                     
+//!                         vec![ (0,true),  (1,true), (2,true)       ], 
+//!                         vec![            (1,true), (2,true)       ],
+//!                         vec![                      (2,true)       ],                                       
+//!                     ],
+//!                 ).ok().unwrap();  
 //! 
 //! let c = vec![ (3,true), (2,true) ];   // define a sparse vector c                                                                                                                          
-//! let division =  EchelonSolverMinorDescendWithMinorKeys::solve(
+//! let division =  ColumnEchelonSolverReverse::solve(
 //!                                                                 c.clone(), // entries must appear in strictly DESCENDING order
 //!                                                                 & matrix, // the matrix oracle traits are only implemented for *references* to VecOfVec, not on VecOfVec itself
-//!                                                                 HashMap::from( [(2,0),(3,1),(4,2)] ), // or as a hashmap, // maps *matched* major keys to matched minor keys
-//!                                                                 BooleanFieldOperator::new(), // defines the ring operations
+//!                                                                 HashMap::from( [(2,0),(3,1),(4,2)] ), // or as a hashmap, // maps *matched* row indices to matched column indices
+//!                                                                 BooleanField::new(), // defines the ring operations
 //!                                                                 OrderOperatorByKey::new(), // an object that asserts (i, s) ≤ (j, t) whenever j ≤ i
 //!                                                             );
 //!                                                         
-//! let product = division.quotient().multiply_matrix_minor_descend( &matrix, BooleanFieldOperator::new(), OrderOperatorByKey::new() );
+//! let product = division
+//!                 .quotient()
+//!                 .multiply_self_as_a_column_vector_with_matrix_and_return_entries_in_reverse_order_custom( 
+//!                     &matrix, 
+//!                     BooleanField::new(), 
+//!                     OrderOperatorByKey::new() 
+//!                 );
 //! 
 //! // solution satisfies Ay = c      
 //! assert_eq!( 
@@ -281,11 +300,11 @@
 //! 
 //! # <a name="qrsolutions">Quotients, remainders, and solutions</a>
 //! 
-//! The solvers return a [DivisionWithRemainder] object, that can be used to extract quotients, remainders, and solutions.
+//! The solvers return a [QuotientRemainderSolver] object, that can be used to extract quotients, remainders, and solutions.
 //! 
 //! **Fact** a quotient is a solution iff the corresponding remainder is zero.
 //! 
-//! Calling `.solution()` on a [DivisionWithRemainder] object will therefore return `Some(quotient)` if the remainer is zero, and `None`
+//! Calling `.solution()` on a [QuotientRemainderSolver] object will therefore return `Some(quotient)` if the remainer is zero, and `None`
 //! otherwise.
 //! 
 //! 
@@ -293,9 +312,9 @@
 //! 
 //! ```
 //! use oat_rust::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
-//! use oat_rust::algebra::matrices::operations::solve::echelon::{EchelonSolverMajorAscendWithMajorKeys, EchelonSolverMinorDescendWithMinorKeys};
-//! use oat_rust::algebra::matrices::operations::multiply::{vector_matrix_multiply_major_ascend_simplified, };        
-//! use oat_rust::algebra::rings::operator_structs::field_prime_order::BooleanFieldOperator;
+//! use oat_rust::algebra::matrices::operations::solve::echelon::{RowEchelonSolver, ColumnEchelonSolverReverse};
+//! use oat_rust::algebra::matrices::operations::multiply::{multiply_row_vector_with_matrix, };        
+//! use oat_rust::algebra::rings::types::field_prime_order::BooleanField;
 //! use oat_rust::algebra::vectors::operations::VectorOperations;
 //! use oat_rust::utilities::functions::evaluate::EvaluateFunctionFnMutWrapper;
 //! use oat_rust::utilities::order::{OrderOperatorByKey, OrderOperatorByKeyReverse};
@@ -304,25 +323,25 @@
 //! use assert_panic::assert_panic;
 //! 
 //! // define the ring operator
-//! let ring_operator = BooleanFieldOperator::new();
+//! let ring_operator = BooleanField::new();
 //! 
 //! // a matrix A with an invertible upper triangular submatrix
 //! let matrix  =   VecOfVec::new(
-//!                         vec![ 
-//!                             vec![                                     ], 
-//!                             vec![                                     ],                                     
-//!                             vec![ (0,true),  (1,true), (2,true)       ], 
-//!                             vec![            (1,true), (2,true)       ],
-//!                             vec![                      (2,true)       ],                                       
-//!                         ],
-//!                     );  
+//!                     vec![ 
+//!                         vec![                                     ], 
+//!                         vec![                                     ],                                     
+//!                         vec![ (0,true),  (1,true), (2,true)       ], 
+//!                         vec![            (1,true), (2,true)       ],
+//!                         vec![                      (2,true)       ],                                       
+//!                     ],
+//!                 ).ok().unwrap();  
 //! 
 //! // create a solver to solve xA = b for x
-//! let division =  EchelonSolverMajorAscendWithMajorKeys::solve(
+//! let division =  RowEchelonSolver::solve(
 //!                                                                 vec![ (0,true), (1,true) ], // entries must appear in strictly ASCENDING order
 //!                                                                 & matrix, // the matrix oracle traits are only implemented for *references* to VecOfVec, not on VecOfVec itself
-//!                                                                 vec![2,3,4], // maps *matched* minor keys to matched major keys
-//!                                                                 BooleanFieldOperator::new(), // defines the ring operations
+//!                                                                 vec![2,3,4], // maps *matched* column indices to matched row indices
+//!                                                                 BooleanField::new(), // defines the ring operations
 //!                                                                 OrderOperatorByKey::new(), // an object that asserts (i, s) ≤ (j, t) whenever i ≤ j
 //!                                                             );
 //! 
@@ -355,9 +374,9 @@
 //! 
 //! ```
 //! use oat_rust::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
-//! use oat_rust::algebra::matrices::operations::solve::echelon::{EchelonSolverMajorAscendWithMajorKeys, EchelonSolverMinorDescendWithMinorKeys};
-//! use oat_rust::algebra::matrices::operations::multiply::{vector_matrix_multiply_major_ascend_simplified};        
-//! use oat_rust::algebra::rings::operator_structs::field_prime_order::BooleanFieldOperator;
+//! use oat_rust::algebra::matrices::operations::solve::echelon::{RowEchelonSolver, ColumnEchelonSolverReverse};
+//! use oat_rust::algebra::matrices::operations::multiply::{multiply_row_vector_with_matrix};        
+//! use oat_rust::algebra::rings::types::field_prime_order::BooleanField;
 //! use oat_rust::algebra::vectors::operations::VectorOperations;
 //! use oat_rust::utilities::functions::evaluate::EvaluateFunctionFnMutWrapper;
 //! use oat_rust::utilities::order::{OrderOperatorByKey, OrderOperatorByKeyReverse};
@@ -366,25 +385,25 @@
 //! use assert_panic::assert_panic;
 //! 
 //! // define the ring operator
-//! let ring_operator = BooleanFieldOperator::new();
+//! let ring_operator = BooleanField::new();
 //! 
 //! // a matrix A with an invertible upper triangular submatrix
 //! let matrix  =   VecOfVec::new(
-//!                         vec![ 
-//!                             vec![                                     ], 
-//!                             vec![                                     ],                                     
-//!                             vec![ (0,true),  (1,true), (2,true)       ], 
-//!                             vec![            (1,true), (2,true)       ],
-//!                             vec![                      (2,true)       ],                                       
-//!                         ],
-//!                     );  
+//!                     vec![ 
+//!                         vec![                                     ], 
+//!                         vec![                                     ],                                     
+//!                         vec![ (0,true),  (1,true), (2,true)       ], 
+//!                         vec![            (1,true), (2,true)       ],
+//!                         vec![                      (2,true)       ],                                       
+//!                     ],
+//!                 ).ok().unwrap();  
 //! 
 //! // create a solver to solve xA = b for x
-//! let division =  EchelonSolverMajorAscendWithMajorKeys::solve(
+//! let division =  RowEchelonSolver::solve(
 //!                                                                 vec![ (0,true), (1,true), (2,true), (3,true) ], // entries must appear in strictly ASCENDING order
 //!                                                                 & matrix, // the matrix oracle traits are only implemented for *references* to VecOfVec, not on VecOfVec itself
-//!                                                                 vec![2,3,4], // maps *matched* minor keys to matched major keys
-//!                                                                 BooleanFieldOperator::new(), // defines the ring operations
+//!                                                                 vec![2,3,4], // maps *matched* column indices to matched row indices
+//!                                                                 BooleanField::new(), // defines the ring operations
 //!                                                                 OrderOperatorByKey::new(), // an object that asserts (i, s) ≤ (j, t) whenever i ≤ j
 //!                                                             );
 //! 
@@ -409,9 +428,9 @@
 //! 
 //! ```
 //! use oat_rust::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
-//! use oat_rust::algebra::matrices::operations::solve::echelon::{EchelonSolverMajorAscendWithMajorKeys, EchelonSolverMinorDescendWithMinorKeys};
-//! use oat_rust::algebra::matrices::operations::multiply::{vector_matrix_multiply_major_ascend_simplified};        
-//! use oat_rust::algebra::rings::operator_structs::field_prime_order::BooleanFieldOperator;
+//! use oat_rust::algebra::matrices::operations::solve::echelon::{RowEchelonSolver, ColumnEchelonSolverReverse};
+//! use oat_rust::algebra::matrices::operations::multiply::{multiply_row_vector_with_matrix};        
+//! use oat_rust::algebra::rings::types::field_prime_order::BooleanField;
 //! use oat_rust::algebra::vectors::operations::VectorOperations;
 //! use oat_rust::utilities::functions::evaluate::EvaluateFunctionFnMutWrapper;
 //! use oat_rust::utilities::order::{OrderOperatorByKey, OrderOperatorByKeyReverse};
@@ -419,25 +438,25 @@
 //! use assert_panic::assert_panic;
 //! 
 //! // define the ring operator
-//! let ring_operator = BooleanFieldOperator::new();
+//! let ring_operator = BooleanField::new();
 //! 
 //! // a matrix A with an invertible upper triangular submatrix
 //! let matrix  =   VecOfVec::new(
-//!                         vec![ 
-//!                             vec![                                     ], 
-//!                             vec![                                     ],                                     
-//!                             vec![ (0,true),  (1,true), (2,true)       ], 
-//!                             vec![            (1,true), (2,true)       ],
-//!                             vec![                      (2,true)       ],                                       
-//!                         ],
-//!                     );  
+//!                     vec![ 
+//!                         vec![                                     ], 
+//!                         vec![                                     ],                                     
+//!                         vec![ (0,true),  (1,true), (2,true)       ], 
+//!                         vec![            (1,true), (2,true)       ],
+//!                         vec![                      (2,true)       ],                                       
+//!                     ],
+//!                 ).ok().unwrap();  
 //! 
 //! let d = vec![ (1,true), (0,true), (3,true), (2,true), ];
-//! let division =  EchelonSolverMajorAscendWithMajorKeys::solve(
+//! let division =  RowEchelonSolver::solve(
 //!                                                                 d.clone(), // entries must appear in strictly ASCENDING order
 //!                                                                 & matrix, // the matrix oracle traits are only implemented for *references* to VecOfVec, not on VecOfVec itself
-//!                                                                 vec![2,3,4], // maps *matched* minor keys to matched major keys
-//!                                                                 BooleanFieldOperator::new(), // defines the ring operations
+//!                                                                 vec![2,3,4], // maps *matched* column indices to matched row indices
+//!                                                                 BooleanField::new(), // defines the ring operations
 //!                                                                 OrderOperatorByKey::new(), // an object that asserts (i, s) ≤ (j, t) whenever i ≤ j
 //!                                                             );                                                                
 //! assert_panic!( for _ in division.solver() {} );   // the elimination procedure clears the first three columns, but cannot clearn the fourth
@@ -449,9 +468,9 @@
 //! 
 //! ```
 //! use oat_rust::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
-//! use oat_rust::algebra::matrices::operations::solve::echelon::{EchelonSolverMajorAscendWithMajorKeys, EchelonSolverMinorDescendWithMinorKeys};
-//! use oat_rust::algebra::matrices::operations::multiply::{vector_matrix_multiply_major_ascend_simplified};        
-//! use oat_rust::algebra::rings::operator_structs::field_prime_order::BooleanFieldOperator;
+//! use oat_rust::algebra::matrices::operations::solve::echelon::{RowEchelonSolver, ColumnEchelonSolverReverse};
+//! use oat_rust::algebra::matrices::operations::multiply::{multiply_row_vector_with_matrix};        
+//! use oat_rust::algebra::rings::types::field_prime_order::BooleanField;
 //! use oat_rust::algebra::vectors::operations::VectorOperations;
 //! use oat_rust::utilities::functions::evaluate::EvaluateFunctionFnMutWrapper;
 //! use oat_rust::utilities::order::{OrderOperatorByKey, OrderOperatorByKeyReverse};
@@ -459,26 +478,26 @@
 //! use assert_panic::assert_panic;
 //! 
 //! // define the ring operator
-//! let ring_operator = BooleanFieldOperator::new();
+//! let ring_operator = BooleanField::new();
 //! 
 //! // a matrix A with an invertible upper triangular submatrix
 //! let matrix  =   VecOfVec::new(
-//!                         vec![ 
-//!                             vec![                                     ], 
-//!                             vec![                                     ],                                     
-//!                             vec![ (0,true),  (1,true), (2,true)       ], 
-//!                             vec![            (1,true), (2,true)       ],
-//!                             vec![                      (2,true)       ],                                       
-//!                         ],
-//!                     );  
+//!                     vec![ 
+//!                         vec![                                     ], 
+//!                         vec![                                     ],                                     
+//!                         vec![ (0,true),  (1,true), (2,true)       ], 
+//!                         vec![            (1,true), (2,true)       ],
+//!                         vec![                      (2,true)       ],                                       
+//!                     ],
+//!                 ).ok().unwrap();  
 //! 
 //! 
 //! let d = vec![ (0,true), (1,true), (2,true), (3,true), (4,true), (2,true), ];
-//! let division =  EchelonSolverMajorAscendWithMajorKeys::solve(
+//! let division =  RowEchelonSolver::solve(
 //!                                                                 d.clone(), // entries must appear in strictly ASCENDING order
 //!                                                                 & matrix, // the matrix oracle traits are only implemented for *references* to VecOfVec, not on VecOfVec itself
-//!                                                                 vec![2,3,4], // maps *matched* minor keys to matched major keys
-//!                                                                 BooleanFieldOperator::new(), // defines the ring operations
+//!                                                                 vec![2,3,4], // maps *matched* column indices to matched row indices
+//!                                                                 BooleanField::new(), // defines the ring operations
 //!                                                                 OrderOperatorByKey::new(), // an object that asserts (i, s) ≤ (j, t) whenever i ≤ j
 //!                                                             );
 //! 
@@ -515,22 +534,23 @@ use derive_getters::Dissolve;
 use derive_new::new;
 
 
-use crate::algebra::matrices::types::transpose::AntiTranspose;
-use crate::algebra::matrices::query::{ViewRowAscend, ViewColDescend, IndicesAndCoefficients};
-use crate::algebra::rings::operator_traits::{Semiring, Ring, DivisionRing, };
+use crate::algebra::matrices::types::transpose::OrderAntiTranspose;
+use crate::algebra::matrices::query::{MatrixOracle};
+use crate::algebra::rings::traits::DivisionRingOperations;
 use crate::algebra::vectors::entries::{KeyValSet, KeyValGet};
-use crate::algebra::vectors::operations::{VectorOperations, LinearCombinationSimplified};
+use crate::algebra::vectors::operations::{VectorOperations, LinearCombinationSimplified, Scale, Simplify};
 
 use crate::utilities::iterators::merge::hit::{hit_bulk_insert, hit_merge_by_predicate};
 use crate::utilities::order::{JudgePartialOrder, ReverseOrder};
 use crate::utilities::functions::evaluate::EvaluateFunction;
-use crate::utilities::iterators::general::{IterTwoType, HeadTail, RequireStrictAscentWithPanic, TransformIter};
+use crate::utilities::iterators::general::{HeadTail, TwoTypeIterator, RequireStrictAscentWithPanic, TransformIter};
+use crate::utilities::iterators::merge::hit::IteratorsMergedInSortedOrder;
 // use debugit::DebugIt as D;
 
 
 /// Standardizes the method of extracting a remainder from a solver
 /// 
-/// See the documentaiton for [DivisionWithRemainder], for an explanation.
+/// See the documentaiton for [QuotientRemainderSolver], for an explanation.
 pub trait IntoRemainder{
     type Remainder;
     fn into_remainder( self ) -> Self::Remainder;
@@ -538,17 +558,17 @@ pub trait IntoRemainder{
 
 /// Wrapper for the quotient and remainder of a division b/A
 /// 
-/// See the documentaiton for [DivisionWithRemainder], for an explanation of terms.
+/// See the documentaiton for [QuotientRemainderSolver], for an explanation of terms.
 #[derive(Clone,Copy,Debug)]
-pub struct QuotientRemainder< Q, R >{
+pub struct QuotientRemainderOutput< Q, R >{
     pub quotient: Q,
     pub remainder: R,
 }
 
 // /// Splits a solver into a quotient and a solution
 // /// 
-// /// See [QuotientRemainder] for the full interpretation.
-// pub trait IntoQuotientRemainder< Remainder >
+// /// See [QuotientRemainderOutput] for the full interpretation.
+// pub trait IntoQuotientRemainderOutput< Remainder >
 //     where 
 //         Self:       Iterator + IntoRemainder,
 // {
@@ -556,8 +576,8 @@ pub struct QuotientRemainder< Q, R >{
 //     /// 
 //     /// Operates by draining the iterator 
 //     /// 
-//     /// See [QuotientRemainder] for the full interpretation.
-//     fn into_quotient_remainder( self ) -> QuotientRemainder< Vec< Self::Item >, Remainder > {
+//     /// See [QuotientRemainderOutput] for the full interpretation.
+//     fn into_quotient_remainder( self ) -> QuotientRemainderOutput< Vec< Self::Item >, Remainder > {
 //         // let mut q = Vec::new();
 //         // while let Some(i) = self.next() { q.push(i) }
 //         // q.shrink_to_fit();
@@ -581,13 +601,13 @@ pub struct QuotientRemainder< Q, R >{
 /// This struct provides methods for extracting quotients, remainders, and solutions from a solver.
 
 #[derive(Copy,Debug,new)]
-pub struct DivisionWithRemainder< I >
+pub struct QuotientRemainderSolver< I >
     where I:    Iterator + IntoRemainder,
 {
     solver:  I
 }
 
-impl < I > DivisionWithRemainder< I >
+impl < I > QuotientRemainderSolver< I >
     where 
         I:              Iterator + IntoRemainder,
         I::Remainder:   Iterator,
@@ -597,18 +617,18 @@ impl < I > DivisionWithRemainder< I >
     /// 
     /// The quotient is a bona fide solution to `Ax = b` or `xA = b` iff the remainder is empty.
     /// 
-    /// See [DivisionWithRemainder] for details.
-    pub fn quotient_remainder( mut self ) -> QuotientRemainder< Vec<I::Item>, I::Remainder > {
+    /// See [QuotientRemainderSolver] for details.
+    pub fn quotient_remainder( mut self ) -> QuotientRemainderOutput< Vec<I::Item>, I::Remainder > {
         let mut quotient = Vec::new();
         for i in self.solver.by_ref() { quotient.push(i) }
         quotient.shrink_to_fit();
         let remainder = self.solver.into_remainder();
-        QuotientRemainder{ quotient, remainder }       
+        QuotientRemainderOutput{ quotient, remainder }       
     }
 
     /// Returns the remainder
     /// 
-    /// See [DivisionWithRemainder] for details.
+    /// See [QuotientRemainderSolver] for details.
     pub fn remainder( mut self ) -> I::Remainder {
         for _ in self.solver.by_ref() {} // drain the quotient
         self.solver.into_remainder() // what remains is the remainder
@@ -616,14 +636,14 @@ impl < I > DivisionWithRemainder< I >
 
     /// Returns the quotient, which is a solution iff the remainder is zero
     /// 
-    /// See [DivisionWithRemainder] for furhter details.
+    /// See [QuotientRemainderSolver] for furhter details.
     /// 
     /// This is equivalent to calling `self.solver()`, because the solver iterates over elements of the quotient.
     pub fn quotient( self ) -> I { self.solver }
 
     /// Returns the solver, which iterates over elements of the quotient
     /// 
-    /// See [DivisionWithRemainder] for furhter details.
+    /// See [QuotientRemainderSolver] for furhter details.
     pub fn solver( self ) -> I { self.solver }    
 
     /// Returns a solution formated as `Vec<T>`, if a solution exists
@@ -632,10 +652,10 @@ impl < I > DivisionWithRemainder< I >
     /// 
     /// Alternate methods
     /// 
-    /// - [DivisionWithRemainder::quotient] provides an iterator for the quotient; this can be faster and more memory efficient, however **the quotient is only a bona fide solution when the remainder is zero**
-    /// - [DivisionWithRemainder::quotient_remainder], provides the same information, plus information about the remainder.  However, take care to remember that the quotient returned by that method is only a bona fide solution if the remainder is empty.
+    /// - [QuotientRemainderSolver::quotient] provides an iterator for the quotient; this can be faster and more memory efficient, however **the quotient is only a bona fide solution when the remainder is zero**
+    /// - [QuotientRemainderSolver::quotient_remainder], provides the same information, plus information about the remainder.  However, take care to remember that the quotient returned by that method is only a bona fide solution if the remainder is empty.
     /// 
-    /// See [DivisionWithRemainder] for furhter details.
+    /// See [QuotientRemainderSolver] for furhter details.
     pub fn solution( self ) -> Option< Vec< I::Item > > {   
         let mut qr = self.quotient_remainder();
         match qr.remainder.next().is_none() {
@@ -650,12 +670,12 @@ impl < I >
 
     Clone for 
     
-    DivisionWithRemainder< I >
+    QuotientRemainderSolver< I >
 
     where I:    Clone + Iterator + IntoRemainder,
 {
     fn clone(&self) -> Self {
-        DivisionWithRemainder { solver: self.solver.clone() }
+        QuotientRemainderSolver { solver: self.solver.clone() }
     }
 }
 
@@ -681,15 +701,15 @@ impl < I >
 // ---------------------------------------------------------------------------
 
 /// Iterates over the entries of the solution `x` to a matrix equation `xA = b`, where
-/// (i) each entry of `x` representing a pair of form `(major_key, coefficient)` is replaced by an entry representing `(match(major_key), coefficient)`, where
-/// `match(major_key)` is the matched minor key, and
-/// (ii) entries appear in ascending order, according to minor index
+/// (i) each entry of `x` representing a pair of form `(row_index, coefficient)` is replaced by an entry representing `(match(row_index), coefficient)`, where
+/// `match(row_index)` is the matched column index, and
+/// (ii) entries appear in ascending order, according to column index
 /// 
 /// # Assumptions
 /// 
-/// - `b` is a sparse vector iterator indexed by the minor keys of `A`, and the entries of `b` appear in ascending order of index
-/// - There is a partial bijection `match: keymin -> keymaj` from the minor keys of `A` to the major keys of `A`; concretely, this means a bijection from a subset of the minor keys to a subset of the major keys
-/// - Whenever `keymaj = match( keymin )`, the leading entry of `A.view_major_ascend( keymaj )` has index `keymin`
+/// - `b` is a sparse vector iterator indexed by the column indices of `A`, and the entries of `b` appear in ascending order of index
+/// - There is a partial bijection `match: column_index -> row_index` from the column indices of `A` to the row indices of `A`; concretely, this means a bijection from a subset of the column indices to a subset of the row indices
+/// - Whenever `row_index = match( column_index )`, the leading entry of `A.row( &row_index )` has index `column_index`
 /// - A solution to `xA = b` exists
 /// 
 /// # What happens when an assumption is violated
@@ -702,41 +722,38 @@ impl < I >
 /// # Implementation
 /// 
 /// The iterator proceeds by repeating the following steps: (i) if `b = 0` has no leading entry, return `None`; we have found a valid solution, `x`, (ii) otherwise `b` has a 
-/// leading (nonzero) entry.  Let `keymin` be the index of this entry.  (iii) if `keymin` is unmatched, return `None`; there exists no solution.  (iv) otherwise, let `keymaj` be the major key matched to `keymin`.  Add a scalar multiple of `A.view_major_ascend( keymaj )` to `b` to 
-/// eliminate its leading entry.  Let `alpha` denote the scalar by which we multiply, and return `Some( (keymin, -alpha) )`.
+/// leading (nonzero) entry.  Let `column_index` be the index of this entry.  (iii) if `column_index` is unmatched, return `None`; there exists no solution.  (iv) otherwise, let `row_index` be the row index matched to `column_index`.  Add a scalar multiple of `A.row( &row_index )` to `b` to 
+/// eliminate its leading entry.  Let `alpha` denote the scalar by which we multiply, and return `Some( (column_index, -alpha) )`.
 #[derive(Dissolve)]
-pub struct EchelonSolverMajorAscendWithMinorKeys< 
+pub struct RowEchelonSolverReindexed< 
                     ProblemVector,
-                    MatchingFromKeyMinToKeyMaj,
+                    MatchingFromColumnIndicesToRowIndices,
                     Matrix,                   
                     RingOperator,
                     OrderOperator,
                 > 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMajor >, // the iterator runs over entries of the same type as the matrix
-        MatchingFromKeyMinToKeyMaj:     EvaluateFunction< Matrix::ColIndex, Option< Matrix::RowIndex > >,
-        Matrix:                         ViewRowAscend + IndicesAndCoefficients,
-        Matrix::ColIndex:                         Clone + PartialEq,
-        Matrix::Coefficient:                         Clone,   
-        Matrix::ViewMajorAscend:        IntoIterator,        
-        Matrix::EntryMajor:             Clone + KeyValGet < Matrix::ColIndex, Matrix::Coefficient > + KeyValSet < Matrix::ColIndex, Matrix::Coefficient >,      
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::EntryMajor >,                   
+        ProblemVector:                              IntoIterator< Item = Matrix::RowEntry >, // the iterator runs over entries of the same type as the matrix
+        MatchingFromColumnIndicesToRowIndices:      EvaluateFunction< Matrix::ColumnIndex, Option< Matrix::RowIndex > >,
+        Matrix:                                     MatrixOracle,
+        Matrix::RowEntry:                           KeyValSet,      
+        RingOperator:                               Clone + DivisionRingOperations< Element = Matrix::Coefficient >,
+        OrderOperator:                              Clone + JudgePartialOrder <  Matrix::RowEntry >,                   
 
 {   
     ring_operator:                      RingOperator, // the operator for the coefficient ring_operator    
     matrix:                             Matrix, // the `A` in `Ax = b`
     entries_to_eliminate:               HeadTail<
                                                 LinearCombinationSimplified<   
-                                                        IterTwoType< // this enum allows us to treat two different iterator types as a single type
-                                                                < Matrix::ViewMajorAscend as IntoIterator >::IntoIter,  // the iterators returned by the matrix                                                                
+                                                        TwoTypeIterator< // this enum allows us to treat two different iterator types as a single type
+                                                                Matrix::Row,  // the iterators returned by the matrix                                                                
                                                                 RequireStrictAscentWithPanic< ProblemVector::IntoIter, OrderOperator >,
-                                                                // Matrix::EntryMajor,
                                                             >,
-                                                        Matrix::ColIndex, Matrix::Coefficient, RingOperator, OrderOperator 
+                                                        RingOperator,
+                                                        OrderOperator,
                                                     >
                                             >,
-    matching_from_keymin_to_keymaj:     MatchingFromKeyMinToKeyMaj,
+    matching_from_column_index_to_row_index:     MatchingFromColumnIndicesToRowIndices,
     // phantom_lifetime:                   PhantomData< Matrix::RowIndex > 
 } 
 
@@ -745,30 +762,27 @@ pub struct EchelonSolverMajorAscendWithMinorKeys<
 
 impl    < 
             ProblemVector,
-            MatchingFromKeyMinToKeyMaj,
+            MatchingFromColumnIndicesToRowIndices,
             Matrix,                   
             RingOperator,
             OrderOperator,
         >  
 
-        EchelonSolverMajorAscendWithMinorKeys<
+        RowEchelonSolverReindexed<
                 ProblemVector,
-                MatchingFromKeyMinToKeyMaj,
+                MatchingFromColumnIndicesToRowIndices,
                 Matrix,                   
                 RingOperator,
                 OrderOperator,
             > 
 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMajor >, // the iterator runs over entries of the same type as the matrix        
-        MatchingFromKeyMinToKeyMaj:     EvaluateFunction< Matrix::ColIndex, Option< Matrix::RowIndex > >,        
-        Matrix:                         ViewRowAscend + IndicesAndCoefficients,
-        Matrix::ColIndex:                         Clone + PartialEq,
-        Matrix::ViewMajorAscend:                IntoIterator,
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        Matrix::Coefficient:                         Clone,
-        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::EntryMajor >,               
-        Matrix::EntryMajor:             Clone + KeyValGet < Matrix::ColIndex, Matrix::Coefficient > + KeyValSet < Matrix::ColIndex, Matrix::Coefficient >,  
+        ProblemVector:                  IntoIterator< Item = Matrix::RowEntry >, // the iterator runs over entries of the same type as the matrix
+        MatchingFromColumnIndicesToRowIndices:     EvaluateFunction< Matrix::ColumnIndex, Option< Matrix::RowIndex > >,
+        Matrix:                         MatrixOracle,
+        Matrix::RowEntry:               KeyValSet< Key=Matrix::ColumnIndex, Val=Matrix::Coefficient >,      
+        RingOperator:                   Clone + DivisionRingOperations< Element = Matrix::Coefficient >,
+        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::RowEntry >,  
 
 {
 
@@ -776,15 +790,15 @@ impl    <
     pub fn solve(
                 b:                              ProblemVector,                
                 a:                              Matrix,
-                matching_from_keymin_to_keymaj: MatchingFromKeyMinToKeyMaj,
+                matching_from_column_index_to_row_index: MatchingFromColumnIndicesToRowIndices,
                 ring_operator:                  RingOperator,
                 order_operator:                 OrderOperator,
             )
             ->
-            DivisionWithRemainder<
-                    EchelonSolverMajorAscendWithMinorKeys<
+            QuotientRemainderSolver<
+                    RowEchelonSolverReindexed<
                             ProblemVector,
-                            MatchingFromKeyMinToKeyMaj,
+                            MatchingFromColumnIndicesToRowIndices,
                             Matrix,                    
                             RingOperator,
                             OrderOperator,
@@ -793,22 +807,22 @@ impl    <
     {
         // we will eliminate entries by adding other vectors; addition is performed by merging in new iterators;
         // because the vectors we merge in may have a different type than the problem vector b, we need to do a
-        // "type union" by wrapping `b` inside an `IterTwoType`
+        // "type union" by wrapping `b` inside an `TwoTypeIterator`
         let entries_to_eliminate
                 =   hit_merge_by_predicate( 
                             std::iter::once(    
-                                    IterTwoType::Iter2( b.into_iter().require_strict_ascent_with_panic( order_operator.clone() ) )   // wrap b in an IterTwoType enum so that it can be easily combined with  
-                                        .scale( ring_operator.minus_one(), ring_operator.clone() )
+                                    TwoTypeIterator::Version2( b.into_iter().require_strict_ascent_with_panic( order_operator.clone() ) )   // wrap b in an TwoTypeIterator enum so that it can be easily combined with  
+                                        .scale_by( ring_operator.minus_one(), ring_operator.clone() )
                                 ),
                             order_operator,
                         )
                         .simplify( ring_operator.clone() );
         // load the entries in the tail of a HeadTail
         let entries_to_eliminate = HeadTail { head: None, tail: entries_to_eliminate };
-        DivisionWithRemainder::new(
-            EchelonSolverMajorAscendWithMinorKeys{
+        QuotientRemainderSolver::new(
+            RowEchelonSolverReindexed{
                     ring_operator,
-                    matching_from_keymin_to_keymaj,
+                    matching_from_column_index_to_row_index,
                     matrix:                             a,
                     entries_to_eliminate, 
                     // phantom_lifetime:                   PhantomData,
@@ -822,7 +836,7 @@ impl    <
 
 impl    < 
             ProblemVector,
-            MatchingFromKeyMinToKeyMaj,
+            MatchingFromColumnIndicesToRowIndices,
             Matrix,                   
             RingOperator,
             OrderOperator,
@@ -830,35 +844,32 @@ impl    <
 
         IntoRemainder for
 
-        EchelonSolverMajorAscendWithMinorKeys<
+        RowEchelonSolverReindexed<
                 ProblemVector,
-                MatchingFromKeyMinToKeyMaj,
+                MatchingFromColumnIndicesToRowIndices,
                 Matrix,                   
                 RingOperator,
                 OrderOperator,
             > 
 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMajor >, // the iterator runs over entries of the same type as the matrix        
-        MatchingFromKeyMinToKeyMaj:     EvaluateFunction< Matrix::ColIndex, Option< Matrix::RowIndex > >,        
-        Matrix:                         ViewRowAscend + IndicesAndCoefficients,
-        Matrix::ColIndex:                         Clone + PartialEq,
-        Matrix::ViewMajorAscend:                IntoIterator,
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        Matrix::Coefficient:                         Clone,
-        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::EntryMajor >,               
-        Matrix::EntryMajor:             Clone + KeyValGet < Matrix::ColIndex, Matrix::Coefficient > + KeyValSet < Matrix::ColIndex, Matrix::Coefficient >,  
+        ProblemVector:                  IntoIterator< Item = Matrix::RowEntry >, // the iterator runs over entries of the same type as the matrix
+        MatchingFromColumnIndicesToRowIndices:     EvaluateFunction< Matrix::ColumnIndex, Option< Matrix::RowIndex > >,
+        Matrix:                         MatrixOracle,
+        Matrix::RowEntry:               KeyValSet< Key=Matrix::ColumnIndex, Val=Matrix::Coefficient >,      
+        RingOperator:                   Clone + DivisionRingOperations< Element = Matrix::Coefficient >,
+        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::RowEntry >,  
 
 
 {
     type Remainder = 
             HeadTail<
                     LinearCombinationSimplified<   
-                            IterTwoType< // this enum allows us to treat two different iterator types as a single type
-                                    < Matrix::ViewMajorAscend as IntoIterator >::IntoIter,  // the iterators returned by the matrix                                                                
+                            TwoTypeIterator< // this enum allows us to treat two different iterator types as a single type
+                                    < Matrix::Row as IntoIterator >::IntoIter,  // the iterators returned by the matrix                                                                
                                     RequireStrictAscentWithPanic< ProblemVector::IntoIter, OrderOperator >, // the vector we have tried to eliminate
                                 >,
-                            Matrix::ColIndex, Matrix::Coefficient, RingOperator, OrderOperator 
+                            RingOperator, OrderOperator 
                         >        
                 >;
 
@@ -882,7 +893,7 @@ impl    <
 
 impl    <
             ProblemVector,
-            MatchingFromKeyMinToKeyMaj,
+            MatchingFromColumnIndicesToRowIndices,
             Matrix,                   
             RingOperator,
             OrderOperator,
@@ -890,27 +901,24 @@ impl    <
 
         Iterator for    
 
-        EchelonSolverMajorAscendWithMinorKeys<
+        RowEchelonSolverReindexed<
                 ProblemVector,
-                MatchingFromKeyMinToKeyMaj,
+                MatchingFromColumnIndicesToRowIndices,
                 Matrix,                   
                 RingOperator,
                 OrderOperator,
             > 
 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMajor >, // the iterator runs over entries of the same type as the matrix        
-        MatchingFromKeyMinToKeyMaj:     EvaluateFunction< Matrix::ColIndex, Option< Matrix::RowIndex > >,        
-        Matrix:                         ViewRowAscend + IndicesAndCoefficients,
-        Matrix::ColIndex:               Clone + PartialEq,
-        Matrix::ViewMajorAscend:        IntoIterator,
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        Matrix::Coefficient:            Clone,
-        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::EntryMajor >,               
-        Matrix::EntryMajor:             Clone + KeyValGet < Matrix::ColIndex, Matrix::Coefficient > + KeyValSet < Matrix::ColIndex, Matrix::Coefficient >,  
+        ProblemVector:                  IntoIterator< Item = Matrix::RowEntry >, // the iterator runs over entries of the same type as the matrix
+        MatchingFromColumnIndicesToRowIndices:     EvaluateFunction< Matrix::ColumnIndex, Option< Matrix::RowIndex > >,
+        Matrix:                         MatrixOracle,
+        Matrix::RowEntry:               KeyValSet< Key=Matrix::ColumnIndex, Val=Matrix::Coefficient >,      
+        RingOperator:                   Clone + DivisionRingOperations< Element = Matrix::Coefficient >,
+        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::RowEntry >, 
 
 {
-    type Item = Matrix::EntryMajor;
+    type Item = Matrix::RowEntry;
 
     fn next( &mut self ) -> Option<Self::Item> { 
 
@@ -923,19 +931,18 @@ impl    <
             // println!("EchelonSolverMajorAscendWithMinorKeys.next(): BRANCH TO ELIMINATE ENTRY: STARTING");
 
             // KEY TO LOOK UP THE VECTOR THAT WILL EXECUTE THE ELIMINATION
-            // let keymaj_of_eliminating_viewmaj = self.matching_from_keymin_to_keymaj.evaluate_function( entry_to_eliminate.key() );
+            // let row_index_of_eliminating_row = self.matching_from_column_index_to_row_index.evaluate_function( entry_to_eliminate.key() );
 
-            match self.matching_from_keymin_to_keymaj.evaluate_function( entry_to_eliminate.key() ) {
+            match self.matching_from_column_index_to_row_index.evaluate_function( entry_to_eliminate.key() ) {
                 None =>  {
-                    // println!("!!!!!!!!!! EXITING BRANCH WITH REMAINDER");
                     // put back the entry
                     self.entries_to_eliminate.head = Some( entry_to_eliminate );
                     None
-                } Some( keymaj_of_eliminating_viewmaj ) => {
+                } Some( row_index_of_eliminating_row ) => {
                     // println!("EchelonSolverMajorAscendWithMinorKeys.next(): BRANCH TO ELIMINATE ENTRY: WAYPOINT 1");            
 
                     // TO ELIMINATE `entry_to_eliminate`, WE ADD A SCALAR MULTIPLE OF A VECTOR TAKEN FROM THE MATRIX; DENOTE THE UNSCLAED VECTOR BY v
-                    let mut seed_of_eliminating_iterator    =   self.matrix.view_major_ascend( keymaj_of_eliminating_viewmaj ).into_iter();
+                    let mut seed_of_eliminating_iterator    =   self.matrix.row( &row_index_of_eliminating_row ).into_iter();
                     
                     // println!("EchelonSolverMajorAscendWithMinorKeys.next(): BRANCH TO ELIMINATE ENTRY: WAYPOINT 2");            
 
@@ -950,8 +957,8 @@ impl    <
                     // SCALE v SO THAT ITS LEADING ENTRY WILL CANCEL `entry_to_eliminate`
                     // note that it won't *actually* cancel that entry in practice, because we already popped the leading entry off of v and off of entries_to_eliminate
                     let eliminating_iterator       
-                            =   IterTwoType::Iter1( seed_of_eliminating_iterator ) 
-                                    .scale( scale_factor.clone(), self.ring_operator.clone() );
+                            =   TwoTypeIterator::Version1( seed_of_eliminating_iterator ) 
+                                    .scale_by( scale_factor.clone(), self.ring_operator.clone() );
 
                     // MERGE THE (BEHEADED) SCALAR MULTIPLE OF v INTO THE HEAP, NAMELY `entries_to_eliminate`
                     // println!("EchelonSolverMajorAscendWithMinorKeys.next(): hit_bulk_insert: STARTING");
@@ -975,7 +982,7 @@ impl    <
 
 impl    < 
             ProblemVector,
-            MatchingFromKeyMinToKeyMaj,
+            MatchingFromColumnIndicesToRowIndices,
             Matrix,                   
             RingOperator,
             OrderOperator,
@@ -983,33 +990,31 @@ impl    <
 
         Clone for    
 
-        EchelonSolverMajorAscendWithMinorKeys<
+        RowEchelonSolverReindexed<
                 ProblemVector,
-                MatchingFromKeyMinToKeyMaj,
+                MatchingFromColumnIndicesToRowIndices,
                 Matrix,                   
                 RingOperator,
                 OrderOperator,
             > 
 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMajor >, // the iterator runs over entries of the same type as the matrix        
-        ProblemVector::IntoIter:        Clone,
-        MatchingFromKeyMinToKeyMaj:     Clone + EvaluateFunction< Matrix::ColIndex, Option< Matrix::RowIndex > >,        
-        Matrix:                         Clone + ViewRowAscend + IndicesAndCoefficients,
-        Matrix::ColIndex:                         Clone + PartialEq,
-        Matrix::ViewMajorAscend:                IntoIterator,
-        Matrix::ViewMajorAscendIntoIter: Clone,
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        Matrix::Coefficient:                         Clone,
-        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::EntryMajor >,               
-        Matrix::EntryMajor:             Clone + KeyValGet < Matrix::ColIndex, Matrix::Coefficient > + KeyValSet < Matrix::ColIndex, Matrix::Coefficient >,              
+        ProblemVector:                              IntoIterator< 
+                                                        Item = Matrix::RowEntry, // the iterator runs over entries of the same type as the matrix
+                                                        IntoIter: Clone 
+                                                    >, 
+        MatchingFromColumnIndicesToRowIndices:      Clone + EvaluateFunction< Matrix::ColumnIndex, Option< Matrix::RowIndex > >,
+        Matrix:                                     Clone + MatrixOracle< Row: Clone >,
+        Matrix::RowEntry:                           Clone + KeyValSet,      
+        RingOperator:                               Clone + DivisionRingOperations< Element = Matrix::Coefficient >,
+        OrderOperator:                              Clone + JudgePartialOrder <  Matrix::RowEntry >,             
 {
     fn clone(&self) -> Self {
-        EchelonSolverMajorAscendWithMinorKeys{ 
+        RowEchelonSolverReindexed{ 
                 ring_operator: self.ring_operator.clone(),
                 matrix: self.matrix.clone(),
                 entries_to_eliminate: self.entries_to_eliminate.clone(),
-                matching_from_keymin_to_keymaj: self.matching_from_keymin_to_keymaj.clone(),
+                matching_from_column_index_to_row_index: self.matching_from_column_index_to_row_index.clone(),
             }
     }
 }
@@ -1033,22 +1038,22 @@ impl    <
 
 
 //  ======================================================================================
-//  ECHELON MAJOR ASCEND SOLVE ASCEND WITH MAJOR KEYS
+//  ECHELON MAJOR ASCEND SOLVE ASCEND WITH ROW INDEXS
 //  ======================================================================================
 
 
 
 
-// ECHELON SOLVE W/ MAJOR KEYS (ITERATOR)
+// ECHELON SOLVE W/ ROW INDEXS (ITERATOR)
 // ---------------------------------------------------------------------------
 
-/// Iterates over the entries of the solution `x` to a matrix equation `xA = b`, where entries appear in ascending order, according to (major) index
+/// Iterates over the entries of the solution `x` to a matrix equation `xA = b`, where entries appear in ascending order, according to row index
 /// 
 /// # Assumptions
 /// 
-/// - `b` is a sparse vector iterator indexed by the minor keys of `A`, and the entries of `b` appear in ascending order of index
-/// - There is a partial bijection `match: keymin -> keymaj` from the minor keys of `A` to the major keys of `A`; concretely, this means a bijection from a subset of the minor keys to a subset of the major keys
-/// - Whenever `keymaj = match( keymin )`, the leading entry of `A.view_major_ascend( keymaj )` has index `keymin`
+/// - `b` is a sparse vector iterator indexed by the column indices of `A`, and the entries of `b` appear in ascending order of index
+/// - There is a partial bijection `match: column_index -> row_index` from the column indices of `A` to the row indices of `A`; concretely, this means a bijection from a subset of the column indices to a subset of the row indices
+/// - Whenever `row_index = match( column_index )`, the leading entry of `A.row( &row_index )` has index `column_index`
 /// - A solution to `xA = b` exists
 /// 
 /// # What happens when an assumption is violated
@@ -1061,87 +1066,83 @@ impl    <
 /// # Implementation
 /// 
 /// The iterator proceeds by repeating the following steps: (i) if `b = 0` has no leading entry, return `None`; we have found a valid solution, `x`, (ii) otherwise `b` has a 
-/// leading (nonzero) entry.  Let `keymin` be the index of this entry.  (iii) if `keymin` is unmatched, return `None`; there exists no solution.  (iv) otherwise, let `keymaj` be the major key matched to `keymin`.  Add a scalar multiple of `A.view_major_ascend( keymaj )` to `b` to 
-/// eliminate its leading entry.  Let `alpha` denote the scalar by which we multiply, and return `Some( (keymaj, -alpha) )`.
+/// leading (nonzero) entry.  Let `column_index` be the index of this entry.  (iii) if `column_index` is unmatched, return `None`; there exists no solution.  (iv) otherwise, let `row_index` be the row index matched to `column_index`.  Add a scalar multiple of `A.row( &row_index )` to `b` to 
+/// eliminate its leading entry.  Let `alpha` denote the scalar by which we multiply, and return `Some( (row_index, -alpha) )`.
 #[derive(Dissolve)]
-pub struct EchelonSolverMajorAscendWithMajorKeys<
+pub struct RowEchelonSolver<
                     ProblemVector,
-                    MatchingFromKeyMinToKeyMaj,
+                    MatchingFromColumnIndicesToRowIndices,
                     Matrix,                    
                     RingOperator,
                     OrderOperator,
                 > 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMajor >, // the iterator runs over entries of the same type as the matrix
-        MatchingFromKeyMinToKeyMaj:     EvaluateFunction< Matrix::ColIndex, Option< Matrix::RowIndex > >,
-        Matrix:                         ViewRowAscend + IndicesAndCoefficients,
-        Matrix::ColIndex:                 Clone + PartialEq,
-        Matrix::Coefficient:                 Clone,   
-        Matrix::ViewMajorAscend:        IntoIterator,        
-        Matrix::EntryMajor:         Clone + KeyValGet < Matrix::ColIndex, Matrix::Coefficient > + KeyValSet < Matrix::ColIndex, Matrix::Coefficient >,      
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        OrderOperator:                Clone + JudgePartialOrder <  Matrix::EntryMajor >,                   
+        ProblemVector:                              IntoIterator< Item = Matrix::RowEntry >, // the iterator runs over entries of the same type as the matrix
+        MatchingFromColumnIndicesToRowIndices:      EvaluateFunction< Matrix::ColumnIndex, Option< Matrix::RowIndex > >,
+        Matrix:                                     MatrixOracle,
+        Matrix::RowEntry:                           KeyValSet< Key=Matrix::ColumnIndex, Val=Matrix::Coefficient >,      
+        RingOperator:                               DivisionRingOperations< Element = Matrix::Coefficient >,
+        OrderOperator:                              JudgePartialOrder <  Matrix::RowEntry >,                   
 
 {   
     ring_operator:                      RingOperator, // the operator for the coefficient ring_operator    
     matrix:                             Matrix, // the `A` in `Ax = b`
     entries_to_eliminate:               HeadTail<
                                                 LinearCombinationSimplified<   
-                                                        IterTwoType< // this enum allows us to treat two different iterator types as a single type
-                                                                < Matrix::ViewMajorAscend as IntoIterator >::IntoIter,  // the iterators returned by the matrix                                                                
+                                                        TwoTypeIterator< // this enum allows us to treat two different iterator types as a single type
+                                                                < Matrix::Row as IntoIterator >::IntoIter,  // the iterators returned by the matrix                                                                
                                                                 RequireStrictAscentWithPanic< ProblemVector::IntoIter, OrderOperator >,
-                                                                // Matrix::EntryMajor,
+                                                                // Matrix::RowEntry,
                                                             >,
-                                                        Matrix::ColIndex, Matrix::Coefficient, RingOperator, OrderOperator 
+                                                        RingOperator, 
+                                                        OrderOperator,
                                                     >
                                             >,
-    matching_from_keymin_to_keymaj:     MatchingFromKeyMinToKeyMaj,
+    matching_from_column_index_to_row_index:     MatchingFromColumnIndicesToRowIndices,
 } 
 
 
 impl    < 
             ProblemVector,
-            MatchingFromKeyMinToKeyMaj,
+            MatchingFromColumnIndicesToRowIndices,
             Matrix,                   
             RingOperator,
             OrderOperator,
         >  
 
-        EchelonSolverMajorAscendWithMajorKeys<
+        RowEchelonSolver<
                 ProblemVector,
-                MatchingFromKeyMinToKeyMaj,
+                MatchingFromColumnIndicesToRowIndices,
                 Matrix,                   
                 RingOperator,
                 OrderOperator,
             > 
 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMajor >, // the iterator runs over entries of the same type as the matrix        
-        MatchingFromKeyMinToKeyMaj:     EvaluateFunction< Matrix::ColIndex, Option< Matrix::RowIndex > >,        
-        Matrix:                         ViewRowAscend + IndicesAndCoefficients,
-        Matrix::ColIndex:               Clone + PartialEq,
-        Matrix::RowIndex:               Clone,
-        Matrix::ViewMajorAscend:                IntoIterator,
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        Matrix::Coefficient:                         Clone,
-        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::EntryMajor >,               
-        Matrix::EntryMajor:             Clone + KeyValGet < Matrix::ColIndex, Matrix::Coefficient > + KeyValSet < Matrix::ColIndex, Matrix::Coefficient >,  
+        ProblemVector:                              IntoIterator< Item = Matrix::RowEntry >, // the iterator runs over entries of the same type as the matrix        
+        MatchingFromColumnIndicesToRowIndices:      EvaluateFunction< Matrix::ColumnIndex, Option< Matrix::RowIndex > >,        
+        Matrix:                                     MatrixOracle,
+        Matrix::ColumnIndex:                        Clone + PartialEq,
+        Matrix::RowIndex:                           Clone,
+        RingOperator:                               Clone + DivisionRingOperations< Element = Matrix::Coefficient >,
+        OrderOperator:                              Clone + JudgePartialOrder <  Matrix::RowEntry >,               
+        Matrix::RowEntry:                           KeyValSet,  
 
 {
 
-    /// Attempts to solve `xA = b` for `x`; see [`EchelonSolverMajorAscendWithMajorKeys`].
+    /// Attempts to solve `xA = b` for `x`; see [`RowEchelonSolver`].
     pub fn solve(
-                b:                              ProblemVector,                
-                a:                              Matrix,
-                matching_from_keymin_to_keymaj: MatchingFromKeyMinToKeyMaj,
-                ring_operator:                  RingOperator,
-                order_operator:               OrderOperator,
+                b:                                          ProblemVector,                
+                a:                                          Matrix,
+                matching_from_column_index_to_row_index:    MatchingFromColumnIndicesToRowIndices,
+                ring_operator:                              RingOperator,
+                order_operator:                             OrderOperator,
             )
             ->
-            DivisionWithRemainder<
-                    EchelonSolverMajorAscendWithMajorKeys<
+            QuotientRemainderSolver<
+                    RowEchelonSolver<
                             ProblemVector,
-                            MatchingFromKeyMinToKeyMaj,
+                            MatchingFromColumnIndicesToRowIndices,
                             Matrix,                    
                             RingOperator,
                             OrderOperator,
@@ -1150,22 +1151,22 @@ impl    <
     {
         // we will eliminate entries by adding other vectors; addition is performed by merging in new iterators;
         // because the vectors we merge in may have a different type than the problem vector b, we need to do a
-        // "type union" by wrapping `b` inside an `IterTwoType`
+        // "type union" by wrapping `b` inside an `TwoTypeIterator`
         let entries_to_eliminate
                 =   hit_merge_by_predicate( 
                             std::iter::once(    
-                                    IterTwoType::Iter2( b.into_iter().require_strict_ascent_with_panic(order_operator.clone()) )   // wrap b in an IterTwoType enum so that it can be easily combined with  
-                                        .scale( ring_operator.minus_one(), ring_operator.clone() ) 
+                                    TwoTypeIterator::Version2( b.into_iter().require_strict_ascent_with_panic(order_operator.clone()) )   // wrap b in an TwoTypeIterator enum so that it can be easily combined with  
+                                        .scale_by( ring_operator.minus_one(), ring_operator.clone() ) 
                                 ),
                             order_operator,
                         )
                         .simplify( ring_operator.clone() );
         // load the entries in the tail of a HeadTail
         let entries_to_eliminate = HeadTail { head: None, tail: entries_to_eliminate }; 
-        DivisionWithRemainder::new(
-            EchelonSolverMajorAscendWithMajorKeys{
+        QuotientRemainderSolver::new(
+            RowEchelonSolver{
                 ring_operator,
-                matching_from_keymin_to_keymaj,
+                matching_from_column_index_to_row_index,
                 matrix:                             a,
                 entries_to_eliminate, 
             } 
@@ -1179,7 +1180,7 @@ impl    <
 
 impl    < 
             ProblemVector,
-            MatchingFromKeyMinToKeyMaj,
+            MatchingFromColumnIndicesToRowIndices,
             Matrix,                   
             RingOperator,
             OrderOperator,
@@ -1187,35 +1188,35 @@ impl    <
 
         IntoRemainder for
 
-        EchelonSolverMajorAscendWithMajorKeys<
+        RowEchelonSolver<
                 ProblemVector,
-                MatchingFromKeyMinToKeyMaj,
+                MatchingFromColumnIndicesToRowIndices,
                 Matrix,                   
                 RingOperator,
                 OrderOperator,
             > 
 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMajor >, // the iterator runs over entries of the same type as the matrix        
-        MatchingFromKeyMinToKeyMaj:     EvaluateFunction< Matrix::ColIndex, Option< Matrix::RowIndex > >,        
-        Matrix:                         ViewRowAscend + IndicesAndCoefficients,
-        Matrix::ColIndex:                         Clone + PartialEq,
-        Matrix::ViewMajorAscend:                IntoIterator,
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
+        ProblemVector:                  IntoIterator< Item = Matrix::RowEntry >, // the iterator runs over entries of the same type as the matrix        
+        MatchingFromColumnIndicesToRowIndices:     EvaluateFunction< Matrix::ColumnIndex, Option< Matrix::RowIndex > >,        
+        Matrix:                         MatrixOracle,
+        Matrix::ColumnIndex:                         Clone + PartialEq,
+        RingOperator:                   Clone + DivisionRingOperations< Element = Matrix::Coefficient >,
         Matrix::Coefficient:                         Clone,
-        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::EntryMajor >,               
-        Matrix::EntryMajor:             Clone + KeyValGet < Matrix::ColIndex, Matrix::Coefficient > + KeyValSet < Matrix::ColIndex, Matrix::Coefficient >,  
+        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::RowEntry >,               
+        Matrix::RowEntry:               Clone + KeyValSet< Key=Matrix::ColumnIndex, Val=Matrix::Coefficient >,  
 
 {
 
     type Remainder = 
         HeadTail<
             LinearCombinationSimplified<   
-                    IterTwoType< // this enum allows us to treat two different iterator types as a single type
-                            < Matrix::ViewMajorAscend as IntoIterator >::IntoIter,  // the iterators returned by the matrix                                                                
+                    TwoTypeIterator< // this enum allows us to treat two different iterator types as a single type
+                            Matrix::Row,  // the iterators returned by the matrix                                                                
                             RequireStrictAscentWithPanic< ProblemVector::IntoIter, OrderOperator >, // the vector we have tried to eliminate
                         >,
-                    Matrix::ColIndex, Matrix::Coefficient, RingOperator, OrderOperator 
+                    RingOperator, 
+                    OrderOperator,
                 >
             >;
 
@@ -1243,7 +1244,7 @@ impl    <
 
 impl    < 
             ProblemVector,
-            MatchingFromKeyMinToKeyMaj,
+            MatchingFromColumnIndicesToRowIndices,
             Matrix,                   
             RingOperator,
             OrderOperator,
@@ -1251,25 +1252,21 @@ impl    <
 
         Iterator for    
 
-        EchelonSolverMajorAscendWithMajorKeys<
+        RowEchelonSolver<
                 ProblemVector,
-                MatchingFromKeyMinToKeyMaj,
+                MatchingFromColumnIndicesToRowIndices,
                 Matrix,                   
                 RingOperator,
                 OrderOperator,
             > 
 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMajor >, // the iterator runs over entries of the same type as the matrix        
-        MatchingFromKeyMinToKeyMaj:     EvaluateFunction< Matrix::ColIndex, Option< Matrix::RowIndex > >,        
-        Matrix:                         ViewRowAscend + IndicesAndCoefficients,
-        Matrix::ColIndex:                         Clone + PartialEq,
-        Matrix::RowIndex:                         Clone, // this is necessary to avoid a "move" error, since the following function uses a major key once to look up a major view (which consums the keymaj) and once to return the value of the keymaj to the user
-        Matrix::ViewMajorAscend:                IntoIterator,
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        Matrix::Coefficient:                         Clone,
-        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::EntryMajor >,               
-        Matrix::EntryMajor:             Clone + KeyValGet < Matrix::ColIndex, Matrix::Coefficient > + KeyValSet < Matrix::ColIndex, Matrix::Coefficient >,  
+        ProblemVector:                              IntoIterator< Item = Matrix::RowEntry >, // the iterator runs over entries of the same type as the matrix        
+        MatchingFromColumnIndicesToRowIndices:      EvaluateFunction< Matrix::ColumnIndex, Option< Matrix::RowIndex > >,        
+        Matrix:                                     MatrixOracle,
+        RingOperator:                               Clone + DivisionRingOperations< Element = Matrix::Coefficient >, // division is required to perform one of the solve operations
+        OrderOperator:                              Clone + JudgePartialOrder <  Matrix::RowEntry >,               
+        Matrix::RowEntry:                           KeyValSet< Key=Matrix::ColumnIndex, Val=Matrix::Coefficient >,
 
 {
     type Item = (Matrix::RowIndex, Matrix::Coefficient);
@@ -1277,7 +1274,7 @@ impl    <
     fn next( &mut self ) -> Option<Self::Item> { 
 
     // unsafe {
-    //     println!("about to invoke EchelonSolverMajorAscendWithMajorKeys.nex(); problem vector =  {:?}", D(&self.entries_to_eliminate) );
+    //     println!("about to invoke RowEchelonSolver.nex(); problem vector =  {:?}", D(&self.entries_to_eliminate) );
     //     std::thread::sleep(std::time::Duration::from_secs(1));
 
     // }
@@ -1295,23 +1292,23 @@ impl    <
                             
 
             // INDEX OF THE VECTOR THAT WILL EXECUTE THE ELIMINATION
-            // let keymaj_of_eliminating_viewmaj = self.matching_from_keymin_to_keymaj.evaluate_function( entry_to_eliminate.key() );
+            // let row_index_of_eliminating_row = self.matching_from_column_index_to_row_index.evaluate_function( entry_to_eliminate.key() );
 
-            match self.matching_from_keymin_to_keymaj.evaluate_function( entry_to_eliminate.key() ) {
+            match self.matching_from_column_index_to_row_index.evaluate_function( entry_to_eliminate.key() ) {
                 None => {
                     self.entries_to_eliminate.head = Some( entry_to_eliminate ); // put back the entry; we cannot clear it
                     None
-                }, Some( keymaj_of_eliminating_viewmaj ) => {
+                }, Some( row_index_of_eliminating_row ) => {
                     // TO ELIMINATE `entry_to_eliminate`, WE ADD A SCALAR MULTIPLE OF A VECTOR TAKEN FROM THE MATRIX; DENOTE THE UNSCLAED VECTOR BY v
-                    let mut seed_of_eliminating_iterator    =   self.matrix.view_major_ascend( keymaj_of_eliminating_viewmaj.clone() ).into_iter();
+                    let mut seed_of_eliminating_iterator    =   self.matrix.row( & row_index_of_eliminating_row ).into_iter();
                     
                     // POP THE LEADING ENTRY OUT OF THE UNSCALED VECTOR v; USE THIS ENTRY TO DETERMINE THE SCALE FACTOR BY WHICH WE'LL MULTIPLY THE REST OF v
                     let eliminating_entry           =   seed_of_eliminating_iterator.next().unwrap();
 
                     // unsafe {
-                    //     println!("keymaj_of_eliminating_viewmaj =  {:?}", D(&keymaj_of_eliminating_viewmaj) );                
+                    //     println!("row_index_of_eliminating_row =  {:?}", D(&row_index_of_eliminating_row) );                
                     //     println!("eliminating entry =  {:?}", D(&eliminating_entry) );
-                    //     let seed_of_eliminating_iterator_2    =   self.matrix.view_major_ascend( keymaj_of_eliminating_viewmaj.clone() ).into_iter().collect_vec();
+                    //     let seed_of_eliminating_iterator_2    =   self.matrix.row( row_index_of_eliminating_row.clone() ).into_iter().collect_vec();
                     //     println!("eliminating iterator entries =  {:?}", D(&seed_of_eliminating_iterator_2) );
                     // }            
 
@@ -1323,14 +1320,14 @@ impl    <
                     // SCALE v SO THAT ITS LEADING ENTRY WILL CANCEL `entry_to_eliminate`
                     // note that it won't *actually* cancel that entry in practice, because we already popped the leading entry off of v and off of entries_to_eliminate
                     let eliminating_iterator       
-                            =   IterTwoType::Iter1( seed_of_eliminating_iterator ) 
-                                    .scale( scale_factor.clone(), self.ring_operator.clone() );
+                            =   TwoTypeIterator::Version1( seed_of_eliminating_iterator ) 
+                                    .scale_by( scale_factor.clone(), self.ring_operator.clone() );
 
 
                     // MERGE THE (BEHEADED) SCALAR MULTIPLE OF v INTO THE HEAP, NAMELY `entries_to_eliminate`
                     hit_bulk_insert( &mut self.entries_to_eliminate.tail.unsimplified, vec![eliminating_iterator] ); 
 
-                    Some( (keymaj_of_eliminating_viewmaj, scale_factor) ) // recall that we have re-purposed `entry_to_eliminate` to hold the output of this function
+                    Some( (row_index_of_eliminating_row, scale_factor) ) // recall that we have re-purposed `entry_to_eliminate` to hold the output of this function
                 }
             }
 
@@ -1347,7 +1344,7 @@ impl    <
 
 impl    < 
             ProblemVector,
-            MatchingFromKeyMinToKeyMaj,
+            MatchingFromColumnIndicesToRowIndices,
             Matrix,                   
             RingOperator,
             OrderOperator,
@@ -1355,34 +1352,32 @@ impl    <
 
         Clone for    
 
-        EchelonSolverMajorAscendWithMajorKeys<
+        RowEchelonSolver<
                 ProblemVector,
-                MatchingFromKeyMinToKeyMaj,
+                MatchingFromColumnIndicesToRowIndices,
                 Matrix,                   
                 RingOperator,
                 OrderOperator,
             > 
 
     where 
-        ProblemVector:                      IntoIterator< Item = Matrix::EntryMajor >, // the iterator runs over entries of the same type as the matrix        
-        ProblemVector::IntoIter:            Clone,
-        MatchingFromKeyMinToKeyMaj:         Clone + EvaluateFunction< Matrix::ColIndex, Option< Matrix::RowIndex > >,        
-        Matrix:                             Clone + ViewRowAscend + IndicesAndCoefficients,
-        Matrix::ColIndex:                   Clone + PartialEq,
-        Matrix::RowIndex:                   Clone, // this is necessary to avoid a "move" error, since the following function uses a major key once to look up a major view (which consums the keymaj) and once to return the value of the keymaj to the user
-        Matrix::ViewMajorAscend:            IntoIterator,
-        Matrix::ViewMajorAscendIntoIter:    Clone,
-        RingOperator:                       Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        Matrix::Coefficient:                Clone,
-        OrderOperator:                      Clone + JudgePartialOrder <  Matrix::EntryMajor >,               
-        Matrix::EntryMajor:                 Clone + KeyValGet < Matrix::ColIndex, Matrix::Coefficient > + KeyValSet < Matrix::ColIndex, Matrix::Coefficient >,              
+        ProblemVector:                              IntoIterator< 
+                                                        Item        =   Matrix::RowEntry,    // the iterator runs over entries of the same type as the matrix        
+                                                        IntoIter:       Clone,
+                                                    >, 
+        MatchingFromColumnIndicesToRowIndices:      Clone + EvaluateFunction< Matrix::ColumnIndex, Option< Matrix::RowIndex > >,        
+        Matrix:                                     Clone + MatrixOracle,
+        RingOperator:                               Clone + DivisionRingOperations< Element = Matrix::Coefficient >,
+        OrderOperator:                              Clone + JudgePartialOrder <  Matrix::RowEntry >,               
+        Matrix::RowEntry:                           KeyValSet,    
+        Simplify<IteratorsMergedInSortedOrder<Scale<TwoTypeIterator<Matrix::Row, RequireStrictAscentWithPanic<ProblemVector::IntoIter, OrderOperator>>, RingOperator>, OrderOperator>, RingOperator>: Clone,     
 {
     fn clone(&self) -> Self {
-        EchelonSolverMajorAscendWithMajorKeys{ 
+        RowEchelonSolver{ 
                 ring_operator: self.ring_operator.clone(),
                 matrix: self.matrix.clone(),
                 entries_to_eliminate: self.entries_to_eliminate.clone(),
-                matching_from_keymin_to_keymaj: self.matching_from_keymin_to_keymaj.clone(),
+                matching_from_column_index_to_row_index: self.matching_from_column_index_to_row_index.clone(),
             }
     }
 }
@@ -1411,26 +1406,26 @@ impl    <
 
 
 //  ======================================================================================
-//  ECHELON MINOR DESCEND SOLVE WITH MAJOR KEYS
+//  ECHELON MINOR DESCEND SOLVE WITH ROW INDEXS
 //  ======================================================================================
 
 
 
 
-// ECHELON SOLVE W/ MAJOR KEYS (ITERATOR)
+// ECHELON SOLVE W/ ROW INDEXS (ITERATOR)
 // ---------------------------------------------------------------------------
 
 
 /// Iterates over the entries of the solution `x` to a matrix equation `Ax = b`, where
-/// (i) each entry of `x`, which represents a pair of form `(minor_key, coefficient)`, is replaced by an entry representing `(match(minor_key), coefficient)`, where
-/// `match(minor_key)` is the matched major key, and
-/// (ii) entries appear in descending order, according to major index
+/// (i) each entry of `x`, which represents a pair of form `(column_index, coefficient)`, is replaced by an entry representing `(match(column_index), coefficient)`, where
+/// `match(column_index)` is the matched row index, and
+/// (ii) entries appear in descending order, according to row index
 /// 
 /// # Assumptions
 /// 
-/// - `b` is a sparse vector iterator indexed by the major keys of `A`, and the entries of `b` appear in descending order of index
-/// - There is a partial bijection `match: keymaj -> keymin` from the major keys of `A` to the minor keys of `A`; concretely, this means a bijection from a subset of the major keys to a subset of the minor keys
-/// - Whenever `keymin = match( keymaj )`, the leading entry of `A.view_minor_descend( keymin )` has index `keymaj`
+/// - `b` is a sparse vector iterator indexed by the row indices of `A`, and the entries of `b` appear in descending order of index
+/// - There is a partial bijection `match: row_index -> column_index` from the row indices of `A` to the column indices of `A`; concretely, this means a bijection from a subset of the row indices to a subset of the column indices
+/// - Whenever `column_index = match( row_index )`, the leading entry of `A.column_reverse( column_index )` has index `row_index`
 /// - A solution to `Ax = b` exists
 /// 
 /// # What happens when an assumption is violated
@@ -1443,66 +1438,60 @@ impl    <
 /// # Implementation
 /// 
 /// The iterator proceeds by repeating the following steps: (i) if `b = 0` has no leading entry, return `None`; we have found a valid solution, `x`, (ii) otherwise `b` has a 
-/// leading (nonzero) entry.  Let `keymin` be the index of this entry.  (iii) if `keymin` is unmatched, return `None`; there exists no solution.  (iv) otherwise, let `keymaj` be the major key matched to `keymin`.  Add a scalar multiple of `A.view_major_ascend( keymaj )` to `b` to 
-/// eliminate its leading entry.  Let `alpha` denote the scalar by which we multiply, and return `Some( (keymaj, -alpha) )`.
+/// leading (nonzero) entry.  Let `column_index` be the index of this entry.  (iii) if `column_index` is unmatched, return `None`; there exists no solution.  (iv) otherwise, let `row_index` be the row index matched to `column_index`.  Add a scalar multiple of `A.row( &row_index )` to `b` to 
+/// eliminate its leading entry.  Let `alpha` denote the scalar by which we multiply, and return `Some( (row_index, -alpha) )`.
 /// 
-/// Under the hood, `EchelonSolverMinorDescendWithMajorKeys` is simply a wrapper for a struct `EchelonSolverMajorAscendWithMinorKeys` which
+/// Under the hood, `ColumnEchelonSolverReverseReindexed` is simply a wrapper for a struct `EchelonSolverMajorAscendWithMinorKeys` which
 /// contains a reference to the antitranspose of the matrix; see source code for full details.
 #[derive(Dissolve)]
-pub struct EchelonSolverMinorDescendWithMajorKeys<
+pub struct ColumnEchelonSolverReverseReindexed<
                     ProblemVector,
-                    MatchingFromKeyMajToKeyMin,
+                    MatchingFromRowIndicesToColumnIndices,
                     Matrix,                     
                     RingOperator,
-                    OrderOperator,
+                    OrderOperatorUnreversed,
                 > 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMinor >, // the iterator runs over entries of the same type as the matrix
-        MatchingFromKeyMajToKeyMin:     EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColIndex > >,
-        Matrix:                         ViewColDescend + IndicesAndCoefficients,
-        Matrix::RowIndex:               Clone + PartialEq,
-        Matrix::Coefficient:                 Clone,   
-        Matrix::ViewMinorDescend:               IntoIterator,        
-        Matrix::EntryMinor:             Clone + KeyValGet < Matrix::RowIndex, Matrix::Coefficient > + KeyValSet < Matrix::RowIndex, Matrix::Coefficient >,      
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::EntryMinor >,                   
+        ProblemVector:                              IntoIterator< Item = Matrix::ColumnEntry >, // the iterator runs over entries of the same type as the matrix
+        MatchingFromRowIndicesToColumnIndices:      EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColumnIndex > >,
+        Matrix:                                     MatrixOracle,
+        Matrix::ColumnEntry:                        KeyValSet < Key=Matrix::RowIndex, Val=Matrix::Coefficient >,      
+        RingOperator:                               Clone + DivisionRingOperations< Element = Matrix::Coefficient >,
+        OrderOperatorUnreversed:                    Clone + JudgePartialOrder <  Matrix::ColumnEntry >,                   
 
 {   
-    antitransposed_solver:      EchelonSolverMajorAscendWithMinorKeys< // the minor keys of the antitransposed matrix are the major keys of the un-antitransposed matrix
+    antitransposed_solver:      RowEchelonSolverReindexed< // the column indices of the antitransposed matrix are the row indices of the un-antitransposed matrix
                                         ProblemVector,
-                                        MatchingFromKeyMajToKeyMin,
-                                        AntiTranspose< Matrix >,
+                                        MatchingFromRowIndicesToColumnIndices,
+                                        OrderAntiTranspose< Matrix >,
                                         RingOperator,
-                                        ReverseOrder< OrderOperator >,
+                                        ReverseOrder< OrderOperatorUnreversed >,
                                     >,
 } 
 
 impl    < 
             ProblemVector,
-            MatchingFromKeyMajToKeyMin,
+            MatchingFromRowIndicesToColumnIndices,
             Matrix,                   
             RingOperator,
             OrderOperatorUnreversed,
         >  
 
-        EchelonSolverMinorDescendWithMajorKeys<
+        ColumnEchelonSolverReverseReindexed<
                 ProblemVector,
-                MatchingFromKeyMajToKeyMin,
+                MatchingFromRowIndicesToColumnIndices,
                 Matrix,                   
                 RingOperator,
                 OrderOperatorUnreversed,
             > 
 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMinor >, // the iterator runs over entries of the same type as the matrix
-        MatchingFromKeyMajToKeyMin:     EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColIndex > >,
-        Matrix:                         ViewColDescend + IndicesAndCoefficients,
-        Matrix::RowIndex:                 Clone + PartialEq,
-        Matrix::Coefficient:                 Clone,   
-        Matrix::ViewMinorDescend:       IntoIterator,        
-        Matrix::EntryMinor:             Clone + KeyValGet < Matrix::RowIndex, Matrix::Coefficient > + KeyValSet < Matrix::RowIndex, Matrix::Coefficient >,      
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        OrderOperatorUnreversed:        Clone + JudgePartialOrder <  Matrix::EntryMinor >,   
+        ProblemVector:                              IntoIterator< Item = Matrix::ColumnEntry >, // the iterator runs over entries of the same type as the matrix
+        MatchingFromRowIndicesToColumnIndices:      EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColumnIndex > >,
+        Matrix:                                     MatrixOracle,
+        Matrix::ColumnEntry:                        KeyValSet < Key=Matrix::RowIndex, Val=Matrix::Coefficient >,      
+        RingOperator:                               Clone + DivisionRingOperations< Element = Matrix::Coefficient >,
+        OrderOperatorUnreversed:                    Clone + JudgePartialOrder <  Matrix::ColumnEntry >,     
 
 {
 
@@ -1510,28 +1499,28 @@ impl    <
     pub fn solve(
                 b:                              ProblemVector,                
                 a:                              Matrix,
-                matching_from_keymaj_to_keymin: MatchingFromKeyMajToKeyMin,
+                matching_from_row_index_to_column_index: MatchingFromRowIndicesToColumnIndices,
                 ring_operator:                  RingOperator,
                 order_operator_unreversed:    OrderOperatorUnreversed,
             )
             ->
-            DivisionWithRemainder<
-                    EchelonSolverMinorDescendWithMajorKeys< 
+            QuotientRemainderSolver<
+                    ColumnEchelonSolverReverseReindexed< 
                             ProblemVector,
-                            MatchingFromKeyMajToKeyMin,
+                            MatchingFromRowIndicesToColumnIndices,
                             Matrix,                     
                             RingOperator,
                             OrderOperatorUnreversed,
                         >             
                 > 
     {
-        DivisionWithRemainder::new(
-            EchelonSolverMinorDescendWithMajorKeys{
-                    // Note that we use EchelonSolverMajorAscendWithMinorKeys, since the minor keys of the antitranspose are the major keys of the original matrix
-                    antitransposed_solver:   EchelonSolverMajorAscendWithMinorKeys::solve(
+        QuotientRemainderSolver::new(
+            ColumnEchelonSolverReverseReindexed{
+                    // Note that we use EchelonSolverMajorAscendWithMinorKeys, since the column indices of the antitranspose are the row indices of the original matrix
+                    antitransposed_solver:   RowEchelonSolverReindexed::solve(
                                                     b,
-                                                    AntiTranspose::new( a ),
-                                                    matching_from_keymaj_to_keymin,
+                                                    OrderAntiTranspose::new( a ),
+                                                    matching_from_row_index_to_column_index,
                                                     ring_operator,
                                                     ReverseOrder::new( order_operator_unreversed ),
                                                 ).quotient()
@@ -1550,7 +1539,7 @@ impl    <
 
 impl    < 
             ProblemVector,
-            MatchingFromKeyMajToKeyMin,
+            MatchingFromRowIndicesToColumnIndices,
             Matrix,                   
             RingOperator,
             OrderOperatorUnreversed,
@@ -1558,35 +1547,32 @@ impl    <
 
         IntoRemainder for
 
-        EchelonSolverMinorDescendWithMajorKeys<
+        ColumnEchelonSolverReverseReindexed<
                 ProblemVector,
-                MatchingFromKeyMajToKeyMin,
+                MatchingFromRowIndicesToColumnIndices,
                 Matrix,                   
                 RingOperator,
                 OrderOperatorUnreversed,
             > 
 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMinor >, // the iterator runs over entries of the same type as the matrix
-        MatchingFromKeyMajToKeyMin:     EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColIndex > >,
-        Matrix:                         ViewColDescend + IndicesAndCoefficients,
-        Matrix::RowIndex:                 Clone + PartialEq,
-        Matrix::Coefficient:                 Clone,   
-        Matrix::ViewMinorDescend:       IntoIterator,        
-        Matrix::EntryMinor:             Clone + KeyValGet < Matrix::RowIndex, Matrix::Coefficient > + KeyValSet < Matrix::RowIndex, Matrix::Coefficient >,      
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        OrderOperatorUnreversed:        Clone + JudgePartialOrder <  Matrix::EntryMinor >,   
+        ProblemVector:                              IntoIterator< Item = Matrix::ColumnEntry >, // the iterator runs over entries of the same type as the matrix
+        MatchingFromRowIndicesToColumnIndices:      EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColumnIndex > >,
+        Matrix:                                     MatrixOracle,      
+        Matrix::ColumnEntry:                        KeyValSet < Key=Matrix::RowIndex, Val=Matrix::Coefficient >,      
+        RingOperator:                               Clone + DivisionRingOperations< Element = Matrix::Coefficient >,
+        OrderOperatorUnreversed:                    Clone + JudgePartialOrder <  Matrix::ColumnEntry >,   
 
 {
 
     type Remainder = 
         HeadTail<
                 LinearCombinationSimplified<   
-                        IterTwoType< // this enum allows us to treat two different iterator types as a single type
-                                < Matrix::ViewMinorDescend as IntoIterator >::IntoIter,  // the iterators returned by the matrix                                                                
+                        TwoTypeIterator< // this enum allows us to treat two different iterator types as a single type
+                                < Matrix::ColumnReverse as IntoIterator >::IntoIter,  // the iterators returned by the matrix                                                                
                                 RequireStrictAscentWithPanic< ProblemVector::IntoIter, ReverseOrder< OrderOperatorUnreversed > >, // the vector we have tried to eliminate
                             >,
-                        Matrix::RowIndex, Matrix::Coefficient, RingOperator, ReverseOrder< OrderOperatorUnreversed >
+                        RingOperator, ReverseOrder< OrderOperatorUnreversed >
                     >
             >;
 
@@ -1614,35 +1600,32 @@ impl    <
 
 impl    <
             ProblemVector,
-            MatchingFromKeyMajToKeyMin,
+            MatchingFromRowIndicesToColumnIndices,
             Matrix,                   
             RingOperator,
-            OrderOperator,
+            OrderOperatorUnreversed,
         > 
 
         Iterator for    
 
-        EchelonSolverMinorDescendWithMajorKeys<
+        ColumnEchelonSolverReverseReindexed<
                 ProblemVector,
-                MatchingFromKeyMajToKeyMin,
+                MatchingFromRowIndicesToColumnIndices,
                 Matrix,                   
                 RingOperator,
-                OrderOperator,
+                OrderOperatorUnreversed,
             > 
 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMinor >, // the iterator runs over entries of the same type as the matrix
-        MatchingFromKeyMajToKeyMin:     EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColIndex > >,
-        Matrix:                         ViewColDescend + IndicesAndCoefficients,
-        Matrix::RowIndex:                         Clone + PartialEq,
-        Matrix::Coefficient:                         Clone,   
-        Matrix::ViewMinorDescend:               IntoIterator,        
-        Matrix::EntryMinor:             Clone + KeyValGet < Matrix::RowIndex, Matrix::Coefficient > + KeyValSet < Matrix::RowIndex, Matrix::Coefficient >,      
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::EntryMinor >,   
+        ProblemVector:                              IntoIterator< Item = Matrix::ColumnEntry >, // the iterator runs over entries of the same type as the matrix
+        MatchingFromRowIndicesToColumnIndices:      EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColumnIndex > >,
+        Matrix:                                     MatrixOracle,      
+        Matrix::ColumnEntry:                        KeyValSet < Key=Matrix::RowIndex, Val=Matrix::Coefficient >,      
+        RingOperator:                               Clone + DivisionRingOperations< Element = Matrix::Coefficient >,
+        OrderOperatorUnreversed:                              Clone + JudgePartialOrder <  Matrix::ColumnEntry >,    
 
 {
-    type Item = Matrix::EntryMinor;
+    type Item = Matrix::ColumnEntry;
 
     fn next( &mut self ) -> Option<Self::Item> { 
         self.antitransposed_solver.next()
@@ -1656,36 +1639,40 @@ impl    <
 
 impl    < 
             ProblemVector,
-            MatchingFromKeyMajToKeyMin,
+            MatchingFromRowIndicesToColumnIndices,
             Matrix,                   
             RingOperator,
-            OrderOperator,
+            OrderOperatorUnreversed,
         > 
 
         Clone for    
 
-EchelonSolverMinorDescendWithMajorKeys<
+ColumnEchelonSolverReverseReindexed<
                     ProblemVector,
-                    MatchingFromKeyMajToKeyMin,
+                    MatchingFromRowIndicesToColumnIndices,
                     Matrix,                     
                     RingOperator,
-                    OrderOperator,
+                    OrderOperatorUnreversed,
                 > 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMinor >, // the iterator runs over entries of the same type as the matrix
-        ProblemVector::IntoIter:        Clone,
-        MatchingFromKeyMajToKeyMin:     Clone + EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColIndex > >,
-        Matrix:                         Clone + ViewColDescend + IndicesAndCoefficients,
-        Matrix::RowIndex:                         Clone + PartialEq,
-        Matrix::Coefficient:                         Clone,   
-        Matrix::ViewMinorDescend:       IntoIterator,        
-        Matrix::ViewMinorDescendIntoIter:   Clone,
-        Matrix::EntryMinor:             Clone + KeyValGet < Matrix::RowIndex, Matrix::Coefficient > + KeyValSet < Matrix::RowIndex, Matrix::Coefficient >,      
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::EntryMinor >,                    
+        ProblemVector:                              IntoIterator< Item = Matrix::ColumnEntry >, // the iterator runs over entries of the same type as the matrix
+        MatchingFromRowIndicesToColumnIndices:      EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColumnIndex > >,
+        Matrix:                                     MatrixOracle,      
+        Matrix::ColumnEntry:                        KeyValSet < Key=Matrix::RowIndex, Val=Matrix::Coefficient >,      
+        RingOperator:                               Clone + DivisionRingOperations< Element = Matrix::Coefficient >,
+        OrderOperatorUnreversed:                              Clone + JudgePartialOrder <  Matrix::ColumnEntry >,  
+        
+        // our struct contains a single field; the following is the type of that field; we simply require this type to implement clone!
+        RowEchelonSolverReindexed< 
+                                        ProblemVector,
+                                        MatchingFromRowIndicesToColumnIndices,
+                                        OrderAntiTranspose< Matrix >,
+                                        RingOperator,
+                                        ReverseOrder< OrderOperatorUnreversed >,
+                                    >:              Clone,                     
 {
     fn clone(&self) -> Self {
-        EchelonSolverMinorDescendWithMajorKeys{ 
+        ColumnEchelonSolverReverseReindexed{ 
                 antitransposed_solver: self.antitransposed_solver.clone()
             }
     }
@@ -1717,13 +1704,13 @@ EchelonSolverMinorDescendWithMajorKeys<
 // ---------------------------------------------------------------------------
 
 
-/// Iterates over the entries of the solution `x` to a matrix equation `Ax = b`, where entries appear in descending order, according to (minor) index
+/// Iterates over the entries of the solution `x` to a matrix equation `Ax = b`, where entries appear in descending order, according to  index
 /// 
 /// # Assumptions
 /// 
-/// - `b` is a sparse vector iterator indexed by the major keys of `A`, and the entries of `b` appear in descending order of index
-/// - There is a partial bijection `match: keymaj -> keymin` from the major keys of `A` to the minor keys of `A`; concretely, this means a bijection from a subset of the major keys to a subset of the minor keys
-/// - Whenever `keymin = match( keymaj )`, the leading entry of `A.view_minor_descend( keymin )` has index `keymaj`
+/// - `b` is a sparse [vector](oat_rust::algebra::vectors) indexed by the row indices of `A`, and the entries of `b` appear in descending order of row index
+/// - There is a partial bijection `match: row_index -> column_index` from the row indices of `A` to the column indices of `A`; concretely, this means a bijection from a subset of the row indices to a subset of the column indices
+/// - Whenever `column_index = match( row_index )`, the leading entry of `A.column_reverse( column_index )` has index `row_index`
 /// - A solution to `Ax = b` exists
 /// 
 /// # What happens when an assumption is violated
@@ -1735,35 +1722,29 @@ EchelonSolverMinorDescendWithMajorKeys<
 /// 
 /// # Implementation
 /// 
-/// The iterator proceeds by repeating the following steps: (i) if `b = 0` has no leading entry, return `None`; we have found a valid solution, `x`, (ii) otherwise `b` has a 
-/// leading (nonzero) entry.  Let `keymin` be the index of this entry.  (iii) if `keymin` is unmatched, return `None`; there exists no solution.  (iv) otherwise, let `keymaj` be the major key matched to `keymin`.  Add a scalar multiple of `A.view_major_ascend( keymaj )` to `b` to 
-/// eliminate its leading entry.  Let `alpha` denote the scalar by which we multiply, and return `Some( (keymaj, -alpha) )`.
-/// 
-/// Under the hood, `EchelonSolverMinorDescendWithMajorKeys` is simply a wrapper for a struct `EchelonSolverMajorAscendWithMinorKeys` which
-/// contains a reference to the antitranspose of the matrix; see source code for full details.
-pub struct EchelonSolverMinorDescendWithMinorKeys<
+/// The iterator proceeds by repeating the following steps: (i) If `b` has no leading entry then `b=0`. In this case return `None`, because we have found a valid solution, `x`. (ii) Otherwise `b` has a 
+/// leading (nonzero) entry.  Let `column_index` be the index of this entry.  (iii) If `column_index` is unmatched, return `None`; there exists no solution.  (iv) Otherwise, let `row_index` be the row index matched to `column_index`.  Add a scalar multiple of `A.row( &row_index )` to `b` to 
+/// eliminate its leading entry.  Let `alpha` denote the scalar by which we multiply, and return `Some( (row_index, -alpha) )`.
+pub struct ColumnEchelonSolverReverse<
                     ProblemVector,
-                    MatchingFromKeyMajToKeyMin,
+                    MatchingFromRowIndicesToColumnIndices,
                     Matrix,                     
                     RingOperator,
                     OrderOperator,
                 > 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMinor >, // the iterator runs over entries of the same type as the matrix
-        MatchingFromKeyMajToKeyMin:     EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColIndex > >,
-        Matrix:                         ViewColDescend + IndicesAndCoefficients,
-        Matrix::RowIndex:                         Clone + PartialEq,
-        Matrix::Coefficient:                         Clone,   
-        Matrix::ViewMinorDescend:               IntoIterator,        
-        Matrix::EntryMinor:             Clone + KeyValGet < Matrix::RowIndex, Matrix::Coefficient > + KeyValSet < Matrix::RowIndex, Matrix::Coefficient >,      
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::EntryMinor >,                   
+        ProblemVector:                              IntoIterator< Item = Matrix::ColumnEntry >, // the iterator runs over entries of the same type as the matrix
+        MatchingFromRowIndicesToColumnIndices:      EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColumnIndex > >,
+        Matrix:                                     MatrixOracle,  
+        Matrix::ColumnEntry:                        KeyValSet < Key=Matrix::RowIndex, Val=Matrix::Coefficient >,      
+        RingOperator:                               Clone + DivisionRingOperations< Element = Matrix::Coefficient >,
+        OrderOperator:                              Clone + JudgePartialOrder <  Matrix::ColumnEntry >,                   
 
 {   
-    antitransposed_solver:      EchelonSolverMajorAscendWithMajorKeys< // the major keys of the antitransposed matrix are the minor keys of the un-antitransposed matrix
+    antitransposed_solver:      RowEchelonSolver< // the row indices of the antitransposed matrix are the column indices of the un-antitransposed matrix
                                         ProblemVector,
-                                        MatchingFromKeyMajToKeyMin,
-                                        AntiTranspose< Matrix >,                 
+                                        MatchingFromRowIndicesToColumnIndices,
+                                        OrderAntiTranspose< Matrix >,                 
                                         RingOperator,
                                         ReverseOrder< OrderOperator >,
                                     >,
@@ -1771,31 +1752,27 @@ pub struct EchelonSolverMinorDescendWithMinorKeys<
 
 impl    < 
             ProblemVector,
-            MatchingFromKeyMajToKeyMin,
+            MatchingFromRowIndicesToColumnIndices,
             Matrix,                   
             RingOperator,
             OrderOperator,
         >  
 
-        EchelonSolverMinorDescendWithMinorKeys<
+        ColumnEchelonSolverReverse<
                 ProblemVector,
-                MatchingFromKeyMajToKeyMin,
+                MatchingFromRowIndicesToColumnIndices,
                 Matrix,                   
                 RingOperator,
                 OrderOperator,
             > 
 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMinor >, // the iterator runs over entries of the same type as the matrix
-        MatchingFromKeyMajToKeyMin:     EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColIndex > >,
-        Matrix:                         ViewColDescend + IndicesAndCoefficients,
-        Matrix::RowIndex:                         Clone + PartialEq,
-        Matrix::ColIndex:               Clone,
-        Matrix::Coefficient:                         Clone,   
-        Matrix::ViewMinorDescend:               IntoIterator,        
-        Matrix::EntryMinor:             Clone + KeyValGet < Matrix::RowIndex, Matrix::Coefficient > + KeyValSet < Matrix::RowIndex, Matrix::Coefficient >,      
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::EntryMinor >,   
+        ProblemVector:                              IntoIterator< Item = Matrix::ColumnEntry >, // the iterator runs over entries of the same type as the matrix
+        MatchingFromRowIndicesToColumnIndices:      EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColumnIndex > >,
+        Matrix:                                     MatrixOracle,  
+        Matrix::ColumnEntry:                        KeyValSet < Key=Matrix::RowIndex, Val=Matrix::Coefficient >,      
+        RingOperator:                               Clone + DivisionRingOperations< Element = Matrix::Coefficient >,
+        OrderOperator:                              Clone + JudgePartialOrder <  Matrix::ColumnEntry >,    
 
 {
 
@@ -1803,28 +1780,28 @@ impl    <
     pub fn solve(
                 b:                              ProblemVector,                
                 a:                              Matrix,
-                matching_from_keymaj_to_keymin: MatchingFromKeyMajToKeyMin,
+                matching_from_row_index_to_column_index: MatchingFromRowIndicesToColumnIndices,
                 ring_operator:                  RingOperator,
                 order_operator:               OrderOperator,
             )
             ->
-            DivisionWithRemainder<
-                    EchelonSolverMinorDescendWithMinorKeys< 
+            QuotientRemainderSolver<
+                    ColumnEchelonSolverReverse< 
                             ProblemVector,
-                            MatchingFromKeyMajToKeyMin,
+                            MatchingFromRowIndicesToColumnIndices,
                             Matrix,                     
                             RingOperator,
                             OrderOperator,
                         >             
                 > 
     {
-        DivisionWithRemainder::new(
-            EchelonSolverMinorDescendWithMinorKeys{
-                // Note that we use EchelonSolverMajorAscendWithMajorKeys, since the major keys of the antitranspose are the minor keys of the original matrix
-                antitransposed_solver:   EchelonSolverMajorAscendWithMajorKeys::solve(
+        QuotientRemainderSolver::new(
+            ColumnEchelonSolverReverse{
+                // Note that we use RowEchelonSolver, since the row indices of the antitranspose are the column indices of the original matrix
+                antitransposed_solver:   RowEchelonSolver::solve(
                                                 b,
-                                                AntiTranspose::new( a ),
-                                                matching_from_keymaj_to_keymin,
+                                                OrderAntiTranspose::new( a ),
+                                                matching_from_row_index_to_column_index,
                                                 ring_operator,
                                                 ReverseOrder::new( order_operator ),
                                             ).quotient()
@@ -1839,7 +1816,7 @@ impl    <
 
 impl    < 
             ProblemVector,
-            MatchingFromKeyMajToKeyMin,
+            MatchingFromRowIndicesToColumnIndices,
             Matrix,                   
             RingOperator,
             OrderOperator,
@@ -1847,35 +1824,32 @@ impl    <
 
         IntoRemainder for
 
-        EchelonSolverMinorDescendWithMinorKeys<
+        ColumnEchelonSolverReverse<
                 ProblemVector,
-                MatchingFromKeyMajToKeyMin,
+                MatchingFromRowIndicesToColumnIndices,
                 Matrix,                   
                 RingOperator,
                 OrderOperator,
             > 
 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMinor >, // the iterator runs over entries of the same type as the matrix
-        MatchingFromKeyMajToKeyMin:     EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColIndex > >,
-        Matrix:                         ViewColDescend + IndicesAndCoefficients,
-        Matrix::RowIndex:                         Clone + PartialEq,
-        Matrix::Coefficient:                         Clone,   
-        Matrix::ViewMinorDescend:               IntoIterator,        
-        Matrix::EntryMinor:             Clone + KeyValGet < Matrix::RowIndex, Matrix::Coefficient > + KeyValSet < Matrix::RowIndex, Matrix::Coefficient >,      
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::EntryMinor >,   
+        ProblemVector:                              IntoIterator< Item = Matrix::ColumnEntry >, // the iterator runs over entries of the same type as the matrix
+        MatchingFromRowIndicesToColumnIndices:      EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColumnIndex > >,
+        Matrix:                                     MatrixOracle,    
+        Matrix::ColumnEntry:                        KeyValSet < Key=Matrix::RowIndex, Val=Matrix::Coefficient >,      
+        RingOperator:                               Clone + DivisionRingOperations< Element = Matrix::Coefficient >,
+        OrderOperator:                              Clone + JudgePartialOrder <  Matrix::ColumnEntry >,   
 
 {
 
     type Remainder = 
             HeadTail<
                     LinearCombinationSimplified<   
-                            IterTwoType< // this enum allows us to treat two different iterator types as a single type
-                                    < Matrix::ViewMinorDescend as IntoIterator >::IntoIter,  // the iterators returned by the matrix                                                                
+                            TwoTypeIterator< // this enum allows us to treat two different iterator types as a single type
+                                    < Matrix::ColumnReverse as IntoIterator >::IntoIter,  // the iterators returned by the matrix                                                                
                                     RequireStrictAscentWithPanic< ProblemVector::IntoIter, ReverseOrder< OrderOperator > >, // the vector we have tried to eliminate
                                 >,
-                            Matrix::RowIndex, Matrix::Coefficient, RingOperator, ReverseOrder< OrderOperator >
+                            RingOperator, ReverseOrder< OrderOperator >
                         >
                 >;
 
@@ -1899,7 +1873,7 @@ impl    <
 
 impl    <
             ProblemVector,
-            MatchingFromKeyMajToKeyMin,
+            MatchingFromRowIndicesToColumnIndices,
             Matrix,                   
             RingOperator,
             OrderOperator,
@@ -1907,28 +1881,24 @@ impl    <
 
         Iterator for    
 
-        EchelonSolverMinorDescendWithMinorKeys<
+        ColumnEchelonSolverReverse<
                 ProblemVector,
-                MatchingFromKeyMajToKeyMin,
+                MatchingFromRowIndicesToColumnIndices,
                 Matrix,                   
                 RingOperator,
                 OrderOperator,
             > 
 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMinor >, // the iterator runs over entries of the same type as the matrix
-        MatchingFromKeyMajToKeyMin:     EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColIndex > >,
-        Matrix:                         ViewColDescend + IndicesAndCoefficients,
-        Matrix::ColIndex:                         Clone,
-        Matrix::RowIndex:                         Clone + PartialEq,
-        Matrix::Coefficient:                         Clone,   
-        Matrix::ViewMinorDescend:               IntoIterator,        
-        Matrix::EntryMinor:             Clone + KeyValGet < Matrix::RowIndex, Matrix::Coefficient > + KeyValSet < Matrix::RowIndex, Matrix::Coefficient >,      
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::EntryMinor >,   
+        ProblemVector:                              IntoIterator< Item = Matrix::ColumnEntry >, // the iterator runs over entries of the same type as the matrix
+        MatchingFromRowIndicesToColumnIndices:      EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColumnIndex > >,
+        Matrix:                                     MatrixOracle,    
+        Matrix::ColumnEntry:                        KeyValSet < Key=Matrix::RowIndex, Val=Matrix::Coefficient >,      
+        RingOperator:                               Clone + DivisionRingOperations< Element = Matrix::Coefficient >,
+        OrderOperator:                              Clone + JudgePartialOrder <  Matrix::ColumnEntry >,   
 
 {
-    type Item = (Matrix::ColIndex, Matrix::Coefficient);
+    type Item = (Matrix::ColumnIndex, Matrix::Coefficient);
 
     fn next( &mut self ) -> Option<Self::Item> { 
         self.antitransposed_solver.next()
@@ -1941,7 +1911,7 @@ impl    <
 
 impl    < 
             ProblemVector,
-            MatchingFromKeyMajToKeyMin,
+            MatchingFromRowIndicesToColumnIndices,
             Matrix,                   
             RingOperator,
             OrderOperator,
@@ -1949,29 +1919,32 @@ impl    <
 
         Clone for    
 
-EchelonSolverMinorDescendWithMinorKeys<
-                    ProblemVector,
-                    MatchingFromKeyMajToKeyMin,
-                    Matrix,                     
-                    RingOperator,
-                    OrderOperator,
-                > 
+        ColumnEchelonSolverReverse<
+                ProblemVector,
+                MatchingFromRowIndicesToColumnIndices,
+                Matrix,                     
+                RingOperator,
+                OrderOperator,
+            > 
     where 
-        ProblemVector:                  IntoIterator< Item = Matrix::EntryMinor >, // the iterator runs over entries of the same type as the matrix
-        ProblemVector::IntoIter:        Clone,
-        MatchingFromKeyMajToKeyMin:     Clone + EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColIndex > >,
-        Matrix:                         Clone + ViewColDescend + IndicesAndCoefficients,
-        Matrix::ColIndex:                         Clone,
-        Matrix::RowIndex:                         Clone + PartialEq,
-        Matrix::Coefficient:                         Clone,   
-        Matrix::ViewMinorDescend:       IntoIterator,        
-        Matrix::ViewMinorDescendIntoIter:   Clone,
-        Matrix::EntryMinor:             Clone + KeyValGet < Matrix::RowIndex, Matrix::Coefficient > + KeyValSet < Matrix::RowIndex, Matrix::Coefficient >,      
-        RingOperator:                   Clone + Semiring< Matrix::Coefficient > + Ring< Matrix::Coefficient > + DivisionRing< Matrix::Coefficient >,
-        OrderOperator:                  Clone + JudgePartialOrder <  Matrix::EntryMinor >,                     
+        ProblemVector:                              IntoIterator< Item = Matrix::ColumnEntry >, // the iterator runs over entries of the same type as the matrix
+        MatchingFromRowIndicesToColumnIndices:      EvaluateFunction< Matrix::RowIndex, Option< Matrix::ColumnIndex > >,
+        Matrix:                                     MatrixOracle,    
+        Matrix::ColumnEntry:                        KeyValSet < Key=Matrix::RowIndex, Val=Matrix::Coefficient >,      
+        RingOperator:                               Clone + DivisionRingOperations< Element = Matrix::Coefficient >,
+        OrderOperator:                              Clone + JudgePartialOrder <  Matrix::ColumnEntry >,   
+        
+        // The struct ColumnEchelonSolverReverse contains only one field; below is the name of that field, and the requirement that it implement Clone
+        RowEchelonSolver< // the row indices of the antitransposed matrix are the column indices of the un-antitransposed matrix
+            ProblemVector,
+            MatchingFromRowIndicesToColumnIndices,
+            OrderAntiTranspose< Matrix >,                 
+            RingOperator,
+            ReverseOrder< OrderOperator >,
+        >:                                          Clone,                       
 {
     fn clone(&self) -> Self {
-        EchelonSolverMinorDescendWithMinorKeys{ 
+        ColumnEchelonSolverReverse{ 
                 antitransposed_solver: self.antitransposed_solver.clone()
             }
     }
@@ -2051,9 +2024,9 @@ mod doctring_tests {
     #[test]
     fn doc_test_module() {
         use crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
-        use crate::algebra::matrices::operations::solve::echelon::{EchelonSolverMajorAscendWithMajorKeys, EchelonSolverMinorDescendWithMinorKeys};
+        use crate::algebra::matrices::operations::solve::echelon::{RowEchelonSolver, ColumnEchelonSolverReverse};
                 
-        use crate::algebra::rings::operator_structs::field_prime_order::BooleanFieldOperator;
+        use crate::algebra::rings::types::field_prime_order::BooleanField;
         use crate::algebra::vectors::operations::VectorOperations;
         use crate::utilities::functions::evaluate::EvaluateFunctionFnMutWrapper;
         use crate::utilities::order::{OrderOperatorByKey};
@@ -2061,7 +2034,7 @@ mod doctring_tests {
         use assert_panic::assert_panic;
 
         // define the ring operator
-        let ring_operator = BooleanFieldOperator::new();
+        let ring_operator = BooleanField::new();
 
         // build a matrix A with an invertible upper triangular submatrix
         let matrix  =   VecOfVec::new(
@@ -2072,7 +2045,7 @@ mod doctring_tests {
                                     vec![            (1,true), (2,true)       ],
                                     vec![                      (2,true)       ],                                       
                                 ],
-                            );    
+                            ).ok().unwrap();    
 
         // ======================================================================================                        
         // SOLVE xA = b FOR x
@@ -2080,36 +2053,49 @@ mod doctring_tests {
                         
         let b = vec![ (0,true), (1,true) ];   // define a sparse vector b           
 
-        // define the key-mapping with a wrapper around a closure operator (|x| -> expression(x))      
+        // define the key-matrix_to_factor with a wrapper around a closure operator (|x| -> expression(x))      
         // --------------------------------------------------------------------------------------
                         
         let partial_bijection = |x: usize| { if x < 3 { Some(x+2) } else { None } };
-        let division =  EchelonSolverMajorAscendWithMajorKeys::solve(
+        let division =  RowEchelonSolver::solve(
                                                                         b.clone(), // entries must appear in strictly ASCENDING order
                                                                         & matrix, // the matrix oracle traits are only implemented for *references* to VecOfVec, not on VecOfVec itself
-                                                                        EvaluateFunctionFnMutWrapper::new( partial_bijection ), // maps *matched* minor keys to matched major keys
-                                                                        BooleanFieldOperator::new(), // defines the ring operations
+                                                                        EvaluateFunctionFnMutWrapper::new( partial_bijection ), // maps *matched* column indices to matched row indices
+                                                                        BooleanField::new(), // defines the ring operations
                                                                         OrderOperatorByKey::new(), // an object that asserts (i, s) ≤ (j, t) whenever i ≤ j
                                                                     );
                                                                 
-        let product = division.quotient().multiply_matrix_major_ascend( &matrix, ring_operator, OrderOperatorByKey::new() );
+        let product = division
+                            .quotient()
+                            .multiply_self_as_a_row_vector_with_matrix_custom( 
+                                &matrix, 
+                                ring_operator, 
+                                OrderOperatorByKey::new() 
+                            );
         assert_eq!( product.collect_vec(), b );   // check the solution, i.e. check that xA = b  
 
 
-        // define the key-mapping with vector
+        // define the key-matrix_to_factor with vector
         // --------------------------------------------------------------------------------------   
                         
         // create a solver to solve xA = b for x
-        let division =  EchelonSolverMajorAscendWithMajorKeys::solve(
+        let division =  RowEchelonSolver::solve(
                                                                         b.clone(), // entries must appear in strictly ASCENDING order
                                                                         & matrix, // the matrix oracle traits are only implemented for *references* to VecOfVec, not on VecOfVec itself
-                                                                        vec![2,3,4], // maps *matched* minor keys to matched major keys
-                                                                        BooleanFieldOperator::new(), // defines the ring operations
+                                                                        vec![2,3,4], // maps *matched* column indices to matched row indices
+                                                                        BooleanField::new(), // defines the ring operations
                                                                         OrderOperatorByKey::new(), // an object that asserts (i, s) ≤ (j, t) whenever i ≤ j
                                                                     );
                                                                 
         // check the solution, i.e. check that xA = b
-        let product = division.clone().quotient().multiply_matrix_major_ascend( &matrix, ring_operator, OrderOperatorByKey::new() );
+        let product = division
+                            .clone()
+                            .quotient()
+                            .multiply_self_as_a_row_vector_with_matrix_custom( 
+                                &matrix, 
+                                ring_operator, 
+                                OrderOperatorByKey::new() 
+                            );
         assert_eq!( product.collect_vec(), b );  
 
         // different look-up methods
@@ -2123,19 +2109,25 @@ mod doctring_tests {
 
         let c = vec![ (3,true), (2,true) ];   // define a sparse vector c  
 
-        // define the key-mapping with a wrapper around a closure operator (|x| -> expression(x))      
+        // define the key-matrix_to_factor with a wrapper around a closure operator (|x| -> expression(x))      
         // --------------------------------------------------------------------------------------        
                                                                                                                                 
         let partial_bijection = |x: usize| { if (2..=4).contains(&x) { Some(x-2) } else { None } };
-        let division =  EchelonSolverMinorDescendWithMinorKeys::solve(
+        let division =  ColumnEchelonSolverReverse::solve(
                                                                         c.clone(), // entries must appear in strictly DESCENDING order
                                                                         & matrix, // the matrix oracle traits are only implemented for *references* to VecOfVec, not on VecOfVec itself
-                                                                        EvaluateFunctionFnMutWrapper::new( partial_bijection ), // maps *matched* major keys to matched minor keys
-                                                                        BooleanFieldOperator::new(), // defines the ring operations
+                                                                        EvaluateFunctionFnMutWrapper::new( partial_bijection ), // maps *matched* row indices to matched column indices
+                                                                        BooleanField::new(), // defines the ring operations
                                                                         OrderOperatorByKey::new(), // an object that asserts (i, s) ≤ (j, t) whenever j ≤ i
                                                                     );
                                                                 
-        let product = division.quotient().multiply_matrix_minor_descend( &matrix, ring_operator, OrderOperatorByKey::new());
+        let product = division
+                            .quotient()
+                            .multiply_self_as_a_column_vector_with_matrix_and_return_entries_in_reverse_order_custom( 
+                                &matrix, 
+                                ring_operator, 
+                                OrderOperatorByKey::new()
+                            );
         assert_eq!( product.collect_vec(), c );   // check the solution, i.e. check that Ay = c      
 
         // ======================================================================================                        
@@ -2149,11 +2141,11 @@ mod doctring_tests {
         let d = vec![ (3,true), (2,true), (1,true), (0,true)  ];
 
         let partial_bijection = |x: usize| { if (2..=4).contains(&x) { Some(x-2) } else { None } };
-        let division =  EchelonSolverMinorDescendWithMinorKeys::solve(
+        let division =  ColumnEchelonSolverReverse::solve(
             d, // entries must appear in strictly DESCENDING order
             & matrix, // the matrix oracle traits are only implemented for *references* to VecOfVec, not on VecOfVec itself
-            EvaluateFunctionFnMutWrapper::new( partial_bijection ), // maps *matched* major keys to matched minor keys
-            BooleanFieldOperator::new(), // defines the ring operations
+            EvaluateFunctionFnMutWrapper::new( partial_bijection ), // maps *matched* row indices to matched column indices
+            BooleanField::new(), // defines the ring operations
             OrderOperatorByKey::new(), // an object that asserts (i, s) ≤ (j, t) whenever j ≤ i
         );    
         let remainder = division.remainder().collect_vec();                                                        
@@ -2163,11 +2155,11 @@ mod doctring_tests {
         // --------------------------------------------------------------------------------------   
 
         let d = vec![ (0,true), (1,true), (2,true), (3,true), ];
-        let division =  EchelonSolverMajorAscendWithMajorKeys::solve(
+        let division =  RowEchelonSolver::solve(
                                                                         d, // entries must appear in strictly ASCENDING order
                                                                         & matrix, // the matrix oracle traits are only implemented for *references* to VecOfVec, not on VecOfVec itself
-                                                                        vec![2,3,4], // maps *matched* minor keys to matched major keys
-                                                                        BooleanFieldOperator::new(), // defines the ring operations
+                                                                        vec![2,3,4], // maps *matched* column indices to matched row indices
+                                                                        BooleanField::new(), // defines the ring operations
                                                                         OrderOperatorByKey::new(), // an object that asserts (i, s) ≤ (j, t) whenever i ≤ j
                                                                     );                                                                
         assert!( division.clone().remainder().eq( vec![ (3,true) ] ) );   // the elimination procedure clears the first three columns, but cannot clearn the fourth
@@ -2186,11 +2178,11 @@ mod doctring_tests {
         // --------------------------------------------------------------------------------------   
 
         let d = vec![ (1,true), (0,true), (3,true), (2,true), ];
-        let division =  EchelonSolverMajorAscendWithMajorKeys::solve(
+        let division =  RowEchelonSolver::solve(
                                                                         d, // entries must appear in strictly ASCENDING order
                                                                         & matrix, // the matrix oracle traits are only implemented for *references* to VecOfVec, not on VecOfVec itself
-                                                                        vec![2,3,4], // maps *matched* minor keys to matched major keys
-                                                                        BooleanFieldOperator::new(), // defines the ring operations
+                                                                        vec![2,3,4], // maps *matched* column indices to matched row indices
+                                                                        BooleanField::new(), // defines the ring operations
                                                                         OrderOperatorByKey::new(), // an object that asserts (i, s) ≤ (j, t) whenever i ≤ j
                                                                     );                                                                
         assert_panic!( for _ in division.solver() {} );   // the elimination procedure clears the first three columns, but cannot clearn the fourth
@@ -2200,11 +2192,11 @@ mod doctring_tests {
         // --------------------------------------------------------------------------------------   
 
         let d = vec![ (0,true), (1,true), (2,true), (3,true), (4,true), (2,true), ];
-        let division =  EchelonSolverMajorAscendWithMajorKeys::solve(
+        let division =  RowEchelonSolver::solve(
                                                                         d, // entries must appear in strictly ASCENDING order
                                                                         & matrix, // the matrix oracle traits are only implemented for *references* to VecOfVec, not on VecOfVec itself
-                                                                        vec![2,3,4], // maps *matched* minor keys to matched major keys
-                                                                        BooleanFieldOperator::new(), // defines the ring operations
+                                                                        vec![2,3,4], // maps *matched* column indices to matched row indices
+                                                                        BooleanField::new(), // defines the ring operations
                                                                         OrderOperatorByKey::new(), // an object that asserts (i, s) ≤ (j, t) whenever i ≤ j
                                                                     );
         
@@ -2237,7 +2229,7 @@ mod tests {
     use super::*;
     
     use itertools::Itertools;
-    use crate::{algebra::matrices::types::vec_of_vec::sorted::VecOfVec, algebra::rings::operator_structs::field_prime_order::PrimeOrderFieldOperator};
+    use crate::{algebra::matrices::types::vec_of_vec::sorted::VecOfVec, algebra::rings::types::field_prime_order::PrimeOrderField};
 
 
     // Invert upper triangular matrices
@@ -2247,19 +2239,19 @@ mod tests {
     /// Verifies that the output of a solver actually solves the problem Ax = b
     /// **IT IS IMPORTANT THAT THE MATRIX BE IN PARTIAL ECHECLON FORM**
     #[cfg(test)] // because this is a helper function, we mark it with the macro shown left to prevent "warning: unused function" from showing up
-    fn test_echelon_solve_on_invertible_uppertriangular_matrix< 'a, MatchingFromKeyMinToKeyMaj, MatchingFromKeyMajToKeyMin, Coefficient, RingOperator >( 
+    fn test_echelon_solve_on_invertible_uppertriangular_matrix< 'a, MatchingFromColumnIndicesToRowIndices, MatchingFromRowIndicesToColumnIndices, Coefficient, RingOperator >( 
                 matrix:                             & VecOfVec< usize, Coefficient >, 
-                matching_from_keymin_to_keymaj:     MatchingFromKeyMinToKeyMaj,
-                matching_from_keymaj_to_keymin:     MatchingFromKeyMajToKeyMin,
+                matching_from_column_index_to_row_index:     MatchingFromColumnIndicesToRowIndices,
+                matching_from_row_index_to_column_index:     MatchingFromRowIndicesToColumnIndices,
                 ring_operator:                      RingOperator, 
                 matrix_size:                        usize 
             ) 
-        where   Coefficient:                         Clone + PartialEq + Ord + std::fmt::Debug,
-                RingOperator:                   Semiring< Coefficient > + Ring< Coefficient > + DivisionRing< Coefficient > + Clone,
-                MatchingFromKeyMinToKeyMaj:     Clone + EvaluateFunction< usize, Option< usize > >,
-                MatchingFromKeyMajToKeyMin:     Clone + EvaluateFunction< usize, Option< usize > >,                
+        where   Coefficient:                                Clone + PartialEq + Ord + std::fmt::Debug,
+                RingOperator:                               DivisionRingOperations< Element = Coefficient > + Clone,
+                MatchingFromColumnIndicesToRowIndices:      Clone + EvaluateFunction< usize, Option< usize > >,
+                MatchingFromRowIndicesToColumnIndices:      Clone + EvaluateFunction< usize, Option< usize > >,                
     {
-        use crate::{algebra::matrices::operations::multiply::{vector_matrix_multiply_major_ascend_simplified, vector_matrix_multiply_minor_descend_simplified}, utilities::order::OrderOperatorAuto};
+        use crate::{algebra::matrices::operations::multiply::{multiply_row_vector_with_matrix, multiply_column_vector_with_matrix_and_return_reversed}, utilities::order::OrderOperatorAuto};
 
         
 
@@ -2275,24 +2267,24 @@ mod tests {
                 vec.sort();
 
 
-                //  view-major solutions (corresponding to xA = b, where A is row-major)
+                //  row vector solutions (corresponding to xA = b)
                 //  --------------------------------------------------------------------                
 
-                // compute a view-major solution with minor keys
-                let solution_major_with_minor_keys = EchelonSolverMajorAscendWithMinorKeys::solve(
+                // compute a row vector solution with column indices
+                let solution_major_with_minor_keys = RowEchelonSolverReindexed::solve(
                                         vec.iter().cloned(),                    
                                         matrix,
-                                        matching_from_keymin_to_keymaj.clone(),
+                                        matching_from_column_index_to_row_index.clone(),
                                         ring_operator.clone(),
                                         OrderOperatorAuto,                    
                                     )
                                     .quotient()
                                     .peekable()
                                     .simplify( ring_operator.clone() );
-                // verify the solution with minor keys
+                // verify the solution with column indices
                 itertools::assert_equal(
                     vec.iter().cloned().peekable().simplify( ring_operator.clone() ),
-                    vector_matrix_multiply_major_ascend_simplified( 
+                    multiply_row_vector_with_matrix( 
                             solution_major_with_minor_keys, 
                             matrix, 
                             ring_operator.clone(), 
@@ -2300,21 +2292,21 @@ mod tests {
                         )
                 );
 
-                // compute a view-major solution with major keys
-                let solution_major_with_major_keys = EchelonSolverMajorAscendWithMajorKeys::solve(
+                // compute a row vector solution with row indices
+                let solution_major_with_major_keys = RowEchelonSolver::solve(
                                         vec.iter().cloned(),                    
                                         matrix,
-                                        matching_from_keymin_to_keymaj.clone(),
+                                        matching_from_column_index_to_row_index.clone(),
                                         ring_operator.clone(),
                                         OrderOperatorAuto,                    
                                     )
                                     .quotient()
                                     .peekable()
                                     .simplify( ring_operator.clone() );
-                // verify the solution with major keys
+                // verify the solution with row indices
                 itertools::assert_equal(
                     vec.iter().cloned().peekable().simplify( ring_operator.clone() ),
-                    vector_matrix_multiply_major_ascend_simplified( 
+                    multiply_row_vector_with_matrix( 
                             solution_major_with_major_keys, 
                             matrix, 
                             ring_operator.clone(), 
@@ -2323,27 +2315,27 @@ mod tests {
                 );    
 
 
-                //  view-minor solutions (corresponding to Ax = b, where A is row-major)
+                //  column vector solutions (corresponding to Ax = b)
                 //  --------------------------------------------------------------------
 
                 // REVERSE THE ORDER OF ENTRIES, SINCE WE ARE NOW DEALING WITH DESCENDING VIEWS
                 vec.reverse(); 
 
-                // compute a view-minor solution with minor keys
-                let solution_minor_with_minor_keys = EchelonSolverMinorDescendWithMinorKeys::solve(
+                // compute a column vector solution with column indices
+                let solution_minor_with_minor_keys = ColumnEchelonSolverReverse::solve(
                                         vec.iter().cloned(),                    
                                         matrix,
-                                        matching_from_keymaj_to_keymin.clone(),
+                                        matching_from_row_index_to_column_index.clone(),
                                         ring_operator.clone(),
                                         OrderOperatorAuto,                    
                                     )
                                     .quotient()
                                     .peekable()
                                     .simplify( ring_operator.clone() );
-                // verify the solution with minor keys
+                // verify the solution with column indices
                 itertools::assert_equal(
                     vec.iter().cloned().peekable().simplify( ring_operator.clone() ),
-                    vector_matrix_multiply_minor_descend_simplified( 
+                    multiply_column_vector_with_matrix_and_return_reversed( 
                             solution_minor_with_minor_keys, 
                             matrix, 
                             ring_operator.clone(), 
@@ -2351,21 +2343,21 @@ mod tests {
                         )
                 );
 
-                // compute a view-minor solution with major keys
-                let solution_major_with_major_keys = EchelonSolverMinorDescendWithMajorKeys::solve(
+                // compute a column vector solution with row indices
+                let solution_major_with_major_keys = ColumnEchelonSolverReverseReindexed::solve(
                                         vec.iter().cloned(),                    
                                         matrix,
-                                        matching_from_keymaj_to_keymin.clone(),
+                                        matching_from_row_index_to_column_index.clone(),
                                         ring_operator.clone(),
                                         OrderOperatorAuto,                    
                                     )
                                     .quotient()
                                     .peekable()
                                     .simplify( ring_operator.clone() );
-                // verify the solution with major keys
+                // verify the solution with row indices
                 itertools::assert_equal(
                     vec.iter().cloned().peekable().simplify( ring_operator.clone() ),
-                    vector_matrix_multiply_minor_descend_simplified( 
+                    multiply_column_vector_with_matrix_and_return_reversed( 
                             solution_major_with_major_keys, 
                             matrix, 
                             ring_operator.clone(), 
@@ -2384,7 +2376,7 @@ mod tests {
     fn test_echelon_solve_on_specific_matrices() {
         use num::rational::Ratio;        
         // use crate::algebra::matrices::query::MajorDimension;
-        use crate::algebra::rings::operator_structs::ring_native::DivisionRingNative;
+        use crate::algebra::rings::types::native::RingOperatorForNativeRustNumberType;
         use crate::utilities::functions::evaluate::EvaluateFunctionFnMutWrapper;
 
         // Define the integer type for the rational numbers we'll use
@@ -2395,29 +2387,29 @@ mod tests {
         let r = Ratio::new;    
         let q = Ratio::from_integer;   
 
-        // Define matching function from Matrix::ColIndex (=usize) to Matrix::RowIndex (=usize)
-        let matching_keymin_to_keymaj_closure = | x: usize | -> Option< usize > { Some( x ) };
-        let matching_keymin_to_keymaj = EvaluateFunctionFnMutWrapper::new( matching_keymin_to_keymaj_closure );
+        // Define matching function from Matrix::ColumnIndex (=usize) to Matrix::RowIndex (=usize)
+        let matching_column_index_to_row_index_closure = | x: usize | -> Option< usize > { Some( x ) };
+        let matching_column_index_to_row_index = EvaluateFunctionFnMutWrapper::new( matching_column_index_to_row_index_closure );
         
         // Define the ring operators
-        let ring_operator_q  =   DivisionRingNative::< Ratio<IntegerType> >::new();  
-        let ring_operator_p  =   PrimeOrderFieldOperator::new(modulus);                  
+        let ring_operator_q  =   RingOperatorForNativeRustNumberType::< Ratio<IntegerType> >::new();  
+        let ring_operator_p  =   PrimeOrderField::new(modulus);                  
 
         // Test individual matrices        
         let matrix  =   VecOfVec::new(
                                 vec![ 
                                     vec![ (0,q(1)) ]
                                 ],
-        );
-        test_echelon_solve_on_invertible_uppertriangular_matrix( &matrix, matching_keymin_to_keymaj.clone(), matching_keymin_to_keymaj.clone(), ring_operator_q, 1 );       
+                        ).ok().unwrap();
+        test_echelon_solve_on_invertible_uppertriangular_matrix( &matrix, matching_column_index_to_row_index.clone(), matching_column_index_to_row_index.clone(), ring_operator_q, 1 );       
 
         let matrix  =   VecOfVec::new(
                                 vec![ 
                                     vec![ (0,q(1)),  (1,q(1)), ], 
                                     vec![            (1,q(1)), ],
                                 ],
-        );
-        test_echelon_solve_on_invertible_uppertriangular_matrix( &matrix, matching_keymin_to_keymaj.clone(), matching_keymin_to_keymaj.clone(), ring_operator_q, 2 );       
+                        ).ok().unwrap();
+        test_echelon_solve_on_invertible_uppertriangular_matrix( &matrix, matching_column_index_to_row_index.clone(), matching_column_index_to_row_index.clone(), ring_operator_q, 2 );       
 
         let matrix  =   VecOfVec::new(
                                 vec![ 
@@ -2425,8 +2417,8 @@ mod tests {
                                     vec![            (1,q(-1)), (2,q(4))       ],
                                     vec![                       (2,q(5))       ],                                    
                                 ],
-        );     
-        test_echelon_solve_on_invertible_uppertriangular_matrix( &matrix, matching_keymin_to_keymaj.clone(), matching_keymin_to_keymaj.clone(), ring_operator_q, 3 );        
+                        ).ok().unwrap(); 
+        test_echelon_solve_on_invertible_uppertriangular_matrix( &matrix, matching_column_index_to_row_index.clone(), matching_column_index_to_row_index.clone(), ring_operator_q, 3 );        
         
         let matrix  =   VecOfVec::new(
                                 vec![ 
@@ -2434,8 +2426,8 @@ mod tests {
                                     vec![              (1,r(4,1)),   (2,r(-2,1))   ],
                                     vec![                            (2,r(7,1))    ],                                    
                                 ],
-        );        
-        test_echelon_solve_on_invertible_uppertriangular_matrix( &matrix, matching_keymin_to_keymaj.clone(), matching_keymin_to_keymaj.clone(), ring_operator_q, 3 );           
+                        ).ok().unwrap();      
+        test_echelon_solve_on_invertible_uppertriangular_matrix( &matrix, matching_column_index_to_row_index.clone(), matching_column_index_to_row_index.clone(), ring_operator_q, 3 );           
 
         let matrix  =   VecOfVec::new(
                                 vec![ 
@@ -2444,8 +2436,8 @@ mod tests {
                                     vec![                                   (2,r(2,1)),     (3,r(-4,1)), ],  
                                     vec![                                                   (3,r(4,1)),  ],                                  
                                 ],
-        );     
-        test_echelon_solve_on_invertible_uppertriangular_matrix( &matrix, matching_keymin_to_keymaj.clone(), matching_keymin_to_keymaj.clone(), ring_operator_q, 4 );         
+                        ).ok().unwrap();
+        test_echelon_solve_on_invertible_uppertriangular_matrix( &matrix, matching_column_index_to_row_index.clone(), matching_column_index_to_row_index.clone(), ring_operator_q, 4 );         
         
         // MUCH LARGER randomized matrix to invert, with nonzero diagonal entries
         use rand::Rng;        // we use this module to generate random elements
@@ -2453,10 +2445,10 @@ mod tests {
 
         let mut rng = rand::thread_rng(); // this generates random integers
         let mut vec_of_vec = vec![];
-        for majkey in 0 .. matrix_size {
+        for row_index in 0 .. matrix_size {
             let coefficient_leading         =   rng.gen_range( 1 .. modulus );
-            let mut new_vec     =   vec![ (majkey, coefficient_leading) ]; // start with a nonzero diagonal element            
-            for q in majkey+1 .. matrix_size { // fill out the rest of this row of the matrix
+            let mut new_vec     =   vec![ (row_index, coefficient_leading) ]; // start with a nonzero diagonal element            
+            for q in row_index+1 .. matrix_size { // fill out the rest of this row of the matrix
                 let coefficient   = rng.gen_range( 0 .. modulus );
                 let flag = rng.gen_range(0usize .. 3usize);
                 if      flag == 0 { new_vec.push( ( q, 0 )           ) }
@@ -2466,8 +2458,8 @@ mod tests {
             vec_of_vec.push( new_vec );  // the row is now filled out; push into the matrix
         }
 
-        let matrix  =   VecOfVec::new(vec_of_vec); // formally wrap the matrix in a VecOfVec struct
-        test_echelon_solve_on_invertible_uppertriangular_matrix( &matrix, matching_keymin_to_keymaj.clone(), matching_keymin_to_keymaj, ring_operator_p, matrix_size );                 
+        let matrix  =   VecOfVec::new(vec_of_vec).ok().unwrap(); // formally wrap the matrix in a VecOfVec struct
+        test_echelon_solve_on_invertible_uppertriangular_matrix( &matrix, matching_column_index_to_row_index.clone(), matching_column_index_to_row_index, ring_operator_p, matrix_size );                 
 
     }
 

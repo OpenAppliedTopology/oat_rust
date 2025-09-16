@@ -1,3 +1,9 @@
+//! A rare-use module to aid iteration over entries in a column.
+//! 
+//! The main purpose of this module is to provide a convenient (though inefficient!)
+//! method to iterate over the entries in a column of a sparse matrix, when
+//! it is otherwise hard to do so.
+
 
 use derive_getters::{Getters, Dissolve};
 use derive_new::new;
@@ -46,13 +52,13 @@ use super::MatrixOracle;
 ///     ];
 /// 
 /// // wrap the data in a VecOfVec sparse matrix struct
-/// let matrix = VecOfVec::new(matrix);
+/// let matrix = & VecOfVec::new(matrix).ok().unwrap();
 /// 
 /// // get some sparse columns
-/// let mut column_0        =   (& matrix ).column(0);
-/// let mut column_0_rev    =   (& matrix ).column_reverse(0);
-/// let mut column_1        =   (& matrix ).column(1);
-/// let mut column_1_rev    =   (& matrix ).column_reverse(1);
+/// let mut column_0        =   matrix.column(&0);
+/// let mut column_0_rev    =   matrix.column_reverse(&0);
+/// let mut column_1        =   matrix.column(&1);
+/// let mut column_1_rev    =   matrix.column_reverse(&1);
 /// 
 /// // check the columns are correct
 /// assert_eq!( column_0.next(),        Some( (0,  1.) )    );
@@ -96,12 +102,14 @@ impl < Matrix, RowIndexIterator >
         
         // this while-loop runs over row indices, until a condition breaks the loop
         while let Some( row_index ) = self.row_index_iterator.next() {
+
             // given a row index, search the corresponding row for an entry with the correct column index
-            self.matrix.row( row_index.clone() )
-                .into_iter()
-                .find( |x| x.key() ==  self.column_index ) // search for an entry with the right column index
-                .map(  |x| return Some( ( row_index, x.val() ) ) ); // if found, return (row_index, coefficient)
+            for entry in self.matrix.row( & row_index ) {
+                if entry.key() == self.column_index {
+                    return Some( ( row_index, entry.val() ) )
+                }
+            }
         }
-        None
+        return None
     }
 }  

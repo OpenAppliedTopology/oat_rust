@@ -1,4 +1,4 @@
-//!  Internal vectors are stored in a *customized* sorted order
+//! Variant of vec-of-vec where internal vectors are stored in a *customized* sorted order
 //! 
 //! See the [parent module](super) for details on what vector-of-vectors format means.
 //! 
@@ -17,20 +17,10 @@
 //! (2) Write to us and let us know. Knowing what people care about helps us prioritize the
 //!     code we work on!
 
-use crate::algebra::vectors::entries::{KeyValGet, KeyValTypes};
-use crate::algebra::matrices::query::{   ViewRow,
-                                        ViewRowAscend,
-                                        ViewRowDescend, ViewColDescend, IndicesAndCoefficients, ViewColAscend, ViewCol, MatrixEntry, MatrixOracle,
-                                        // ViewCol, 
-                                        // ViewColAscend,
-                                        // ViewColDescend,
-                                        // WhichMajor,
-                                        // MajorDimension
-                                    };
+use crate::algebra::vectors::entries::{KeyValGet};
 
-                                    use crate::utilities::order::{JudgePartialOrder, is_sorted_strictly, OrderOperatorByKey, };
+use crate::utilities::order::{JudgePartialOrder, is_sorted_strictly, OrderOperatorByKey, };
 
-use std::iter::{Rev, Cloned};
 
 
 
@@ -65,18 +55,18 @@ use std::iter::{Rev, Cloned};
 pub struct VecOfVec
                 < IndexCoeffPair, OrderOperator, >
 
-    // < ColIndex, Coefficient, IndexCoeffPair, OrderOperator, >
+    // < ColumnIndex, Coefficient, IndexCoeffPair, OrderOperator, >
 
-    // where   IndexCoeffPair:     KeyValGet < ColIndex, Coefficient, >,
+    // where   IndexCoeffPair:     KeyValGet < ColumnIndex, Coefficient, >,
     //         OrderOperator:    JudgePartialOrder<  IndexCoeffPair >,
 
 
     where   OrderOperator:    JudgePartialOrder<  IndexCoeffPair >,   
-            IndexCoeffPair:     KeyValTypes,         
+            IndexCoeffPair:     KeyValGet,         
 {
     vec_of_vec:         Vec< Vec< IndexCoeffPair > >,
     order_operator:   OrderOperator,
-    // pub phantom_minkey: PhantomData< ColIndex >,
+    // pub phantom_minkey: PhantomData< ColumnIndex >,
     // pub phantom_snzval: PhantomData< Coefficient >,
 }
 
@@ -86,10 +76,10 @@ impl    < IndexCoeffPair, OrderOperator, >
         VecOfVec 
             < IndexCoeffPair, OrderOperator, >
         
-        where   // IndexCoeffPair:     KeyValGet < ColIndex, Coefficient >,
+        where   // IndexCoeffPair:     KeyValGet < Key = ColumnIndex, Val = Coefficient >,
                 OrderOperator:    JudgePartialOrder<  IndexCoeffPair >,
-                IndexCoeffPair:     KeyValTypes,
-                // ColIndex:             ,
+                IndexCoeffPair:     KeyValGet,
+                // ColumnIndex:             ,
                 // Coefficient:             ,
                 // Self:               'a,        
 
@@ -154,10 +144,9 @@ pub fn vecvec_with_defualt_order
         ( vecvec: Vec < Vec < IndexCoeffPair > > )
         ->
         VecOfVec 
-            < IndexCoeffPair, OrderOperatorByKey< IndexCoeffPair::Key, IndexCoeffPair::Val, IndexCoeffPair >, >
+            < IndexCoeffPair, OrderOperatorByKey, >
 
-        where   IndexCoeffPair:         KeyValGet < IndexCoeffPair::Key, IndexCoeffPair::Val >,
-                IndexCoeffPair:         KeyValTypes,
+        where   IndexCoeffPair:         KeyValGet,
                 IndexCoeffPair::Key:    PartialOrd,
     
 {
@@ -174,94 +163,6 @@ pub fn vecvec_with_defualt_order
         )
 }
 
-impl < 'a, IndexCoeffPair, OrderOperator, >
-
-    IndicesAndCoefficients for 
-    &'a VecOfVec< IndexCoeffPair, OrderOperator, >
-
-    where   
-        OrderOperator:    JudgePartialOrder<  IndexCoeffPair >,
-        IndexCoeffPair:     KeyValTypes,             
-
-{ 
-    type EntryMajor = &'a IndexCoeffPair;
-    type EntryMinor = (usize, IndexCoeffPair::Val);       
-    type ColIndex = IndexCoeffPair::Key; 
-    type RowIndex = usize; 
-    type Coefficient = IndexCoeffPair::Val; 
-}  
-
-
-
-// impl < 'a, IndexCoeffPair, OrderOperator, >
-    
-//     ViewRow  for 
-    
-//     &'a VecOfVec
-//         < IndexCoeffPair, OrderOperator, >
-
-//     where   //IndexCoeffPair:     KeyValGet < ColIndex, Coefficient >,
-//             OrderOperator:    JudgePartialOrder<  IndexCoeffPair >,    
-//             IndexCoeffPair:     KeyValTypes,        
-// {
-//     type ViewMajor          =   &'a[IndexCoeffPair];
-//     type ViewMajorIntoIter  =   std::slice::Iter< 'a, IndexCoeffPair >;
-
-//     fn view_major( & self, index: usize ) -> &'a[IndexCoeffPair] {
-//         return self.vec_of_vec[index].as_slice()
-//     } 
-// }
-
-
-// impl < 'a, IndexCoeffPair, OrderOperator, >
-    
-//     ViewRowAscend  for 
-    
-//     &'a VecOfVec 
-//         < IndexCoeffPair, OrderOperator, >
-
-//     where   // IndexCoeffPair:     KeyValGet < ColIndex, Coefficient >,
-//             OrderOperator:    JudgePartialOrder<  IndexCoeffPair >, 
-//             IndexCoeffPair:     KeyValTypes,                 
-// {
-//     type ViewMajorAscend            =   &'a[IndexCoeffPair];
-//     type ViewMajorAscendIntoIter    =   std::slice::Iter< 'a, IndexCoeffPair >;
-        
-//     /// Assumes that entries in each vector are sorted in ascending order.
-//     // fn view_major_ascend( & self, index: usize ) -> & Vec< IndexCoeffPair > {
-//     //     return self.view_major( index )
-//     // } 
-//     fn view_major_ascend( & self, index: usize ) -> &'a[IndexCoeffPair] {
-//         self.view_major( index )
-//     }     
-// }
-
-// impl < 'a, IndexCoeffPair, OrderOperator, > 
-    
-//     ViewRowDescend  for 
-    
-//     &'a VecOfVec 
-//         < IndexCoeffPair, OrderOperator, >
-
-//     where   //IndexCoeffPair:     KeyValGet < ColIndex, Coefficient >,
-//             OrderOperator:    JudgePartialOrder<  IndexCoeffPair >,
-//             IndexCoeffPair:     KeyValTypes,              
-// {
-//     type ViewMajorDescend           =   Rev<std::slice::Iter<'a, IndexCoeffPair>>;
-//     type ViewMajorDescendIntoIter   =   < Self::ViewMajorDescend as IntoIterator >::IntoIter;
-        
-//     /// Assumes that entries in each vector are sorted in ascending order.    
-//     fn view_major_descend( & self, index: usize ) -> Rev<std::slice::Iter<'a, IndexCoeffPair >> {
-//         return self.vec_of_vec[index].iter().rev()
-//     } 
-// }
-
-
-
-
-
-
-
 
 
 
@@ -275,6 +176,6 @@ impl < 'a, IndexCoeffPair, OrderOperator, >
 mod tests {    
 
     // Note this useful idiom: importing names from outer (for mod tests) scope.
-    use super::*;
+    
 
 }

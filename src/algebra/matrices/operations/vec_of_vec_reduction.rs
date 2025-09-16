@@ -1,8 +1,8 @@
 //! Only valid for `vec_of_vec` matrices (not of general iterest)
 
-use crate::algebra::rings::operator_traits::{Semiring, Ring, DivisionRing};
-use crate::algebra::vectors::entries::{KeyValGet};
-use crate::algebra::vectors::operations::{VectorOperations};
+use crate::algebra::rings::traits::DivisionRingOperations;
+use crate::algebra::vectors::operations::VectorOperations;
+use crate::algebra::vectors::entries::KeyValGet;
 use std::collections::HashMap;
 use std::fmt::Debug;
 
@@ -24,14 +24,14 @@ use std::fmt::Debug;
 /// # Examples
 /// 
 /// ```
-/// use oat_rust::algebra::rings::operator_structs::ring_native::DivisionRingNative;
+/// use oat_rust::algebra::rings::types::native::RingOperatorForNativeRustNumberType;
 /// use oat_rust::algebra::matrices::operations::vec_of_vec_reduction::clear_if_in;;
 ///
 /// let     clearor         =   vec![ (0, 1.), (1, 1.)          ];
 /// let mut clearee         =   vec![          (1, 1.), (2, 1.) ];
 /// let mut buffer          =   Vec::new();
 /// let     pivot_entry     =   (1, 1.);
-/// let     ring_operator   =   DivisionRingNative::<f64>::new();
+/// let     ring_operator   =   RingOperatorForNativeRustNumberType::<f64>::new();
 ///
 /// clear_if_in(
 ///     &       clearor,
@@ -77,7 +77,7 @@ pub fn  clear_if_in< Key, Val, RingOperator > (
     pivot_entry:    &         (Key, Val),
     ring_operator:                RingOperator 
 )
-where   RingOperator: Semiring<Val> + Ring<Val> + DivisionRing<Val> + Clone,
+where   RingOperator: DivisionRingOperations< Element = Val > + Clone,
         Key: Clone + Debug + PartialEq + PartialOrd,
         Val: Clone + Debug +PartialOrd
 
@@ -100,7 +100,7 @@ where   RingOperator: Semiring<Val> + Ring<Val> + DivisionRing<Val> + Clone,
                                     clearor
                                         .iter()
                                         .cloned()
-                                        .scale( scalar, ring_operator.clone() )
+                                        .scale_by( scalar, ring_operator.clone() )
                                 )
                                 .peekable()                         // make peekable (necessary to gather coefficients)
                                 .gather( ring_operator.clone() )             // gather coefficients
@@ -127,7 +127,7 @@ pub fn clear_cols< RingOperator, Key, Val, IndexIter: IntoIterator< Item = usize
     pivot_entry:    &         (Key, Val),
     ring_operator:                RingOperator,     
     )
-    where   RingOperator: Semiring<Val> + Ring<Val> + DivisionRing<Val> + Clone,
+    where   RingOperator: DivisionRingOperations< Element = Val > + Clone,
             Key: Clone + Debug + PartialEq + PartialOrd,
             Val: Clone + Debug +PartialOrd    
 {
@@ -160,7 +160,7 @@ type Key = usize;
 /// # Examples
 /// 
 /// ```
-/// use oat_rust::algebra::rings::operator_structs::ring_native::DivisionRingNative;
+/// use oat_rust::algebra::rings::types::native::RingOperatorForNativeRustNumberType;
 /// use oat_rust::algebra::matrices::operations::vec_of_vec_reduction::right_reduce;
 /// use std::iter::FromIterator;
 ///
@@ -185,7 +185,7 @@ type Key = usize;
 /// /// Compute the actual matrix and (sorted sequence of) pivot pairs
 /// let hash = right_reduce( 
 ///                 &mut matrix, 
-///                 DivisionRingNative::<f64>::new() 
+///                 RingOperatorForNativeRustNumberType::<f64>::new() 
 ///             );            
 /// let mut pivot_pairs = Vec::from_iter( hash );        
 /// pivot_pairs.sort();
@@ -205,7 +205,7 @@ pub fn right_reduce
     ->
     HashMap::<Key, Key>
 
-    where   RingOperator: Semiring<Val> + Ring<Val> + DivisionRing<Val> + Clone,
+    where   RingOperator: DivisionRingOperations< Element = Val > + Clone,
             Key: Clone + Debug + PartialEq + PartialOrd + Eq + std::hash::Hash,
             Val: Clone + Debug +PartialOrd
 
@@ -233,7 +233,7 @@ pub fn right_reduce
                                             clearor
                                                 .iter()
                                                 .cloned()
-                                                .scale( scalar, ring_operator.clone() )
+                                                .scale_by( scalar, ring_operator.clone() )
                                         )
                                         .peekable()                         // make peekable (necessary to gather coefficients)
                                         .gather( ring_operator.clone() )             // gather coefficients
@@ -275,7 +275,7 @@ pub fn right_reduce
 mod tests {
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use crate::algebra::matrices::operations::vec_of_vec_reduction::*;
-    use crate::algebra::rings::operator_structs::ring_native::DivisionRingNative;
+    use crate::algebra::rings::types::native::RingOperatorForNativeRustNumberType;
     use std::iter::FromIterator;
 
     #[test]
@@ -306,7 +306,7 @@ mod tests {
         // Compute the actual matrix and (sorted sequence of) pivot pairs
         let hash = right_reduce( 
                         &mut matrix, 
-                        DivisionRingNative::<f64>::new() 
+                        RingOperatorForNativeRustNumberType::<f64>::new() 
                     );            
         let mut pivot_pairs = Vec::from_iter( hash );        
         pivot_pairs.sort();
@@ -344,7 +344,7 @@ mod tests {
             &mut    clearee_matrix,
                     col_ind_2clear,
             &       pivot_entry,
-                    DivisionRingNative::<f64>::new() ,
+                    RingOperatorForNativeRustNumberType::<f64>::new() ,
         );  
         
         let target_matrix   =   vec![

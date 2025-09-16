@@ -1,227 +1,55 @@
 //! Create a new matrix by applying a transformation to each entry of an existing matrix.
 
-use std::{fmt::Debug, iter::Cloned, marker::PhantomData};
+use std::{fmt::Debug, marker::PhantomData};
 
-use crate::{algebra::matrices::query::{ViewRowAscend, IndicesAndCoefficients, ViewColDescend, MatrixOracle}, utilities::{functions::evaluate::EvaluateFunction, iterators::general::MapByTransform}};
-use crate::algebra::vectors::entries::{KeyValGet, KeyValNew, ReindexEntry};
+use derive_getters::{Dissolve, Getters};
 
-
-//  TRAIT: ENTRY-WISE TRANSFORMATIONS
-//  ---------------------------------------------------------------------
-
-
-/// Vector-wise transformations on matrix oracles.
-///
-pub trait TransformMajorAscend < ViewMajorAscend >
-
-    where   Self:               ViewRowAscend,
-            ViewMajorAscend:    IntoIterator
-
-{
-}
-
-
-// struct MatrixPeekable {
-//     matrix:             MatrixUnsimplified
-// }
-
-
-
-//  TRANSFORM ENTRY-WISE
-//  ---------------------------------------------------------------------
-
-
-
-
-
-//  CLONED ENTRIES
-//  ---------------------------------------------------------------------
-
-/// Wrapper for matrix oracles; applies `.simplify()` to each iterator returned by the matrix.
-/// 
-/// See the documentation for [IntoClonedRowEntries](crate::algebra::matrices::operations::transform_entry_wise::IntoClonedRowEntries), for an example.
-pub struct ClonedRowEntries < MatrixUncloned >  
-{
-    matrix_uncloned:            MatrixUncloned,
-}
-
-
-impl < 'a, MatrixUncloned, RowEntryUnref, >
-
-    MatrixOracle for
-
-    ClonedRowEntries< MatrixUncloned >
-
-    where
-        MatrixUncloned:             MatrixOracle< RowEntry = &'a RowEntryUnref >,
-        MatrixUncloned::RowIndex:   Clone,
-        RowEntryUnref:              'a + Clone + Debug + KeyValGet< MatrixUncloned::ColumnIndex, MatrixUncloned::Coefficient >,
-{
-
-    type Coefficient        =   MatrixUncloned::Coefficient;       // The type of coefficient stored in each entry of the matrix
-    
-    type RowIndex           =   MatrixUncloned::RowIndex;          // The type key used to look up rows.  Matrices can have rows indexed by anything: integers, simplices, strings, etc.
-    type ColumnIndex        =   MatrixUncloned::ColumnIndex;       // The type of column indices
-    
-    type RowEntry           =   RowEntryUnref;          // The type of entries in each row; these are essentially pairs of form `(column_index, coefficient)`
-    type ColumnEntry        =   MatrixUncloned::ColumnEntry;        // The type of entries in each column; these are essentially pairs of form `(row_index, coefficient)`
-    
-    type Row                =   Cloned< MatrixUncloned::RowIter >;               // What you get when you ask for a row.
-    type RowIter            =   Cloned< MatrixUncloned::RowIter >;           // What you get when you call `row.into_iter()`, where `row` is a row
-    type RowReverse         =   Cloned< MatrixUncloned::RowReverseIter >;  // What you get when you ask for a row with the order of entries reversed
-    type RowReverseIter     =   Cloned< MatrixUncloned::RowReverseIter >;  // What you get when you call `row_reverse.into_iter()`, where `row_reverse` is a reversed row (which is a row with order of entries reversed)
-    
-    type Column             =   MatrixUncloned::Column;            // What you get when you ask for a column
-    type ColumnIter         =   MatrixUncloned::ColumnIter;        // What you get when you call `column.into_iter()`, where `column` is a column
-    type ColumnReverse      =   MatrixUncloned::ColumnReverse;     // What you get when you ask for a column with the order of entries reversed 
-    type ColumnReverseIter  =   MatrixUncloned::ColumnReverseIter; // What you get when you call `column_reverse.into_iter()`, where `column_reverse` is a reversed column (which is a column with order of entries reversed)
-
-    fn entry(                   & self,  row: Self::RowIndex, column: Self::ColumnIndex )   ->  Option< Self::Coefficient >
-        { self.matrix_uncloned.entry( row, column ) }
-
-    fn row(                     & self,  index: Self::RowIndex    )       -> Self::Row
-        {   
-            let a   =   (self.matrix_uncloned).row( index.clone() ).into_iter().cloned();
-            let c: Vec<_> = a.collect();            
-            println!("c = {:?}", c );
-            let a   =   (self.matrix_uncloned).row( index.clone() ).into_iter().cloned();            
-            return a
-        }
-    fn row_opt(                 & self,  index: Self::RowIndex    )   -> Option<Self::Row>
-        { self.matrix_uncloned.row_opt( index ).map(|x| x.into_iter().cloned() ) }
-    fn row_reverse(             & self,  index: Self::RowIndex    )       -> Self::RowReverse
-        { self.matrix_uncloned.row_reverse( index ).into_iter().cloned() }
-    fn row_reverse_opt(         & self,  index: Self::RowIndex    )   -> Option<Self::RowReverse>
-        { self.matrix_uncloned.row_reverse_opt( index ).map(|x| x.into_iter().cloned() ) }    
-    
-    fn column(                  & self,  index: Self::ColumnIndex )       -> Self::Column
-        { self.matrix_uncloned.column( index ) }
-    fn column_opt(              & self,  index: Self::ColumnIndex )   -> Option<Self::Column>
-        { self.matrix_uncloned.column_opt( index ) }
-    fn column_reverse(          & self,  index: Self::ColumnIndex )       -> Self::ColumnReverse
-        { self.matrix_uncloned.column_reverse( index ) }
-    fn column_reverse_opt(      & self,  index: Self::ColumnIndex )   -> Option<Self::ColumnReverse> 
-        { self.matrix_uncloned.column_reverse_opt( index ) }    
-} 
-
-
-
-// IndicesAndCoefficients
-impl < 'a, T, MatrixUncloned >
-
-    IndicesAndCoefficients for  
-
-    ClonedRowEntries < MatrixUncloned >
-
-    where
-        MatrixUncloned:                         ViewRowAscend< EntryMajor = &'a T > + IndicesAndCoefficients,
-        MatrixUncloned::ViewMajorAscend:        IntoIterator,
-        T:                                      Clone,    // these requirements reflect the requirements for Cloned to implement Iterator (see the source code for Cloned) 
-        T:                                      'a,       // these requirements reflect the requirements for Cloned to implement Iterator (see the source code for Cloned)           
-
-{ 
-    type EntryMajor = T;
-    type EntryMinor = MatrixUncloned::EntryMinor;
-    type ColIndex = MatrixUncloned::ColIndex; 
-    type RowIndex = MatrixUncloned::RowIndex; 
-    type Coefficient = MatrixUncloned::Coefficient; 
-} 
-
-
-
-//  ViewRowAscend
-impl    < 'a, T, MatrixUncloned > 
-
-        ViewRowAscend for 
-
-        ClonedRowEntries
-            < MatrixUncloned > 
-            
-        where
-            MatrixUncloned:                         ViewRowAscend< EntryMajor = &'a T > + IndicesAndCoefficients,
-            MatrixUncloned::ViewMajorAscend:        IntoIterator,
-            T:                                      Clone,    // these requirements reflect the requirements for Cloned to implement Iterator (see the source code for Cloned) 
-            T:                                      'a,       // these requirements reflect the requirements for Cloned to implement Iterator (see the source code for Cloned)   
-
-{
-    type ViewMajorAscend            =   Cloned < MatrixUncloned::ViewMajorAscendIntoIter >;
-    type ViewMajorAscendIntoIter    =   Cloned < MatrixUncloned::ViewMajorAscendIntoIter >;
-
-    fn view_major_ascend( & self, majkey: Self::RowIndex) -> Self::ViewMajorAscend { 
-        self.matrix_uncloned.view_major_ascend( majkey ).into_iter().cloned()
-    }
-}
-
-/// Trait to wrap a matrix oracle in a [`ClonedRowEntries`] struct, which wraps each view
-/// of the matrix in a `Cloned` struct, thereby ensuring that each view iterator passes
-/// a *clone* of its next item to the user, rather than the item itself.
-pub trait IntoClonedRowEntries
-        
-    where 
-        Self:                 Sized + ViewRowAscend,
-        Self::EntryMajor:     Clone,
-{
-
-    /// Wraps a matrix oracle in a [`ClonedRowEntries`] struct, which wraps each view
-    /// of the matrix in a `Cloned` struct, thereby ensuring that each view iterator passes
-    /// a *clone* of its next item to the user, rather than the item itself.
-    /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// // import crates
-    /// use oat_rust::algebra::matrices::types::vec_of_vec::sorted_ref::VecOfVec;
-    /// use oat_rust::algebra::matrices::operations::transform_entry_wise::IntoClonedRowEntries;
-    /// use oat_rust::algebra::matrices::query::MatrixOracle;
-    /// use oat_rust::utilities::order::OrderOperatorByKey;
-    /// 
-    /// // define the matrix and its entry-wise clone
-    /// let matrix_origin   =   VecOfVec::new( 
-    ///                                                             vec![ vec![ (0,0), (1,1), ] ],
-    ///                                                         );
-    /// let matrix_origin_ref   =   &matrix_origin;
-    /// let matrix_cloned       =   ( matrix_origin_ref ).cloned_entries();
-    /// 
-    /// // check that iterators return the same sequence of entries
-    /// assert!(    itertools::equal(   
-    ///                     ( & matrix_origin ).row(0).cloned(),
-    ///                     ( & matrix_cloned ).row(0),                            
-    ///                 ));
-    /// ```
-    fn cloned_entries( self ) -> ClonedRowEntries < Self > {
-        ClonedRowEntries::< Self > { matrix_uncloned: self }
-    }
-}
-
-impl < MatrixUncloned, > 
-    
-    IntoClonedRowEntries for 
-
-    MatrixUncloned where 
-
-    MatrixUncloned:                         ViewRowAscend,
-    MatrixUncloned::EntryMajor:   Clone
-
-{ } // the function `cloned_entries` is auto-implemented
+use crate::{algebra::matrices::query::{ MatrixOracle}, utilities::{functions::evaluate::EvaluateFunction, iterators::general::MapByTransform}};
+use crate::algebra::vectors::entries::{KeyValNew, ReindexEntry};
 
 
 
 
 
 
-//  REINDEX
+
+
+
+//  REINDEX SQUARE MATRIX
 //  ---------------------------------------------------------------------
 
 /// Reindexes a matrix given a pair of functions that map old indices to new indices, and vice versa.
 /// 
-/// Concretely, if the original matrix `M` satisfies 
+/// Concretely, suppose `f` is a function that maps new indices to old ones. If the original matrix `M` satisfies 
 /// ```text
-/// M[i,j] = t
+/// M[f(i),f(j)] = t
 /// ```
-/// then the new matrix `N` satisfies 
-/// ```te
-/// N[ f^{-1}(i), f^{-1}(j) ] = t
+/// then the new matrix `N` then satisfies 
+/// ```text
+/// N[ i, j ] = t
 /// ```
+/// 
+/// # Requirements and warnings
+/// 
+/// The functions `reindex_function_old_to_new` and `reindex_function_new_to_old` must be muutally inverse.
+/// That is, `reindex_function_new_to_old(    reindex_function_old_to_new(  old_index   )    )` must equal
+/// `old_index`, for all row/column indices of `M`.  Otherwise the matrix `N` may violate some of the conditions
+/// required for a valid implementation of the [MatrixOracle] trait.
+/// 
+/// # Design notes
+/// 
+/// This construction relies on user-provided functions to map old indices to new and vice versa. 
+/// Currently the functions take full values as inputs, rather than references.
+/// References would probably give better performance in general, but they would introduce the
+/// need for explcit lifetime parameters and bounds, which gives added complexity. 
+/// At the time this documenation was written, the [ReindexSquareMatrix] struct is only used 
+/// once in the OAT library: to reindex a square, integer-indexed matrix representing the matched
+/// part of the target COMB in a U-match decomposition. Since cloning versus referencing has
+/// very little performance difference for integers, we elected to stick with the simpler implementation
+/// for now (aknowledging that this is only half the battle; if you want to index into the matrix then
+/// you will have to clone the index). If users find strong motivation for a more complex, reference-based implementation, this
+/// can be revisited.
+#[derive(Clone,Copy,Debug,Dissolve,Eq,PartialEq,Getters,Ord,PartialOrd)]
 pub struct ReindexSquareMatrix< MatrixUnreindexed, ReindexFunctionOldToNew, ReindexFunctionNewToOld, IndexOld, IndexNew, EntryNew > 
 {
     matrix_unreindexed:             MatrixUnreindexed,
@@ -248,110 +76,283 @@ impl    < MatrixUnreindexed, ReindexFunctionOldToNew, ReindexFunctionNewToOld, I
 }
 
 
-//  IndicesAndCoefficients
+
+
+//  MatrixOracle
 impl    < MatrixUnreindexed, ReindexFunctionOldToNew, ReindexFunctionNewToOld, IndexOld, IndexNew, EntryNew > 
 
-        IndicesAndCoefficients for 
+        MatrixOracle for 
 
         ReindexSquareMatrix
             < MatrixUnreindexed, ReindexFunctionOldToNew, ReindexFunctionNewToOld, IndexOld, IndexNew, EntryNew > 
 
         where
-            MatrixUnreindexed:          IndicesAndCoefficients< ColIndex = IndexOld, RowIndex = IndexOld, >,
-            ReindexFunctionOldToNew:    EvaluateFunction< MatrixUnreindexed::RowIndex, IndexNew >,
-            ReindexFunctionNewToOld:    EvaluateFunction< IndexNew, MatrixUnreindexed::RowIndex >,            
+            MatrixUnreindexed:          MatrixOracle< RowIndex = IndexOld, ColumnIndex = IndexOld >,
+            ReindexFunctionOldToNew:    Clone + EvaluateFunction< IndexOld, IndexNew >,
+            ReindexFunctionNewToOld:    Clone + EvaluateFunction< IndexNew, MatrixUnreindexed::RowIndex >,
+            EntryNew:                   Clone + Debug + PartialEq + KeyValNew <  Key = IndexNew,  Val = MatrixUnreindexed::Coefficient   >,
+            IndexNew:                   Clone + Debug + Eq,
 {   
-    type EntryMajor = EntryNew;    
-    type EntryMinor = EntryNew;        
-    type ColIndex = IndexNew;     
-    type RowIndex = IndexNew;     
-    type Coefficient = MatrixUnreindexed::Coefficient;    
-}
+    type RowEntry               =   EntryNew;    
+    type ColumnEntry            =   EntryNew;        
+    type ColumnIndex            =   IndexNew;     
+    type RowIndex               =   IndexNew;     
+    type Coefficient            =   MatrixUnreindexed::Coefficient;
 
-
-//  ViewRowAscend
-impl    < MatrixUnreindexed, ReindexFunctionOldToNew, ReindexFunctionNewToOld, IndexOld, IndexNew, EntryNew > 
-
-        ViewRowAscend for 
-
-        ReindexSquareMatrix
-            < MatrixUnreindexed, ReindexFunctionOldToNew, ReindexFunctionNewToOld, IndexOld, IndexNew, EntryNew > 
-
-        where
-            MatrixUnreindexed:                          IndicesAndCoefficients< ColIndex = IndexOld, RowIndex = IndexOld, >,
-            MatrixUnreindexed:                          ViewRowAscend,
-            MatrixUnreindexed::ViewMajorAscend:         IntoIterator,
-            MatrixUnreindexed::EntryMajor:    KeyValGet< MatrixUnreindexed::ColIndex, MatrixUnreindexed::Coefficient >,
-            ReindexFunctionOldToNew:                    Clone + EvaluateFunction< MatrixUnreindexed::RowIndex, IndexNew >,
-            ReindexFunctionNewToOld:                    EvaluateFunction< IndexNew, MatrixUnreindexed::RowIndex >,  
-            EntryNew:                                   KeyValNew< IndexNew, MatrixUnreindexed::Coefficient >,                      
-{
-    type ViewMajorAscend           =   MapByTransform< 
-                                                MatrixUnreindexed::ViewMajorAscendIntoIter, 
-                                                EntryNew,
-                                                ReindexEntry<   
-                                                        MatrixUnreindexed::EntryMajor,
-                                                        EntryNew,
-                                                        MatrixUnreindexed::ColIndex,
-                                                        IndexNew,
-                                                        MatrixUnreindexed::Coefficient,
-                                                        ReindexFunctionOldToNew,
-                                                    >
-                                            >;
-    type ViewMajorAscendIntoIter   =   Self::ViewMajorAscend;
-
-    fn view_major_ascend(&self, index: Self::ColIndex) -> Self::ViewMajorAscend {
-        let selecting_index_new = (self.reindex_function_new_to_old).evaluate_function( index );
+    type Row                    =   MapByTransform< 
+                                                         MatrixUnreindexed::Row, 
+                                                         EntryNew,
+                                                         ReindexEntry< ReindexFunctionOldToNew >
+                                                     >;    
+    type RowReverse             =   MapByTransform< 
+                                                         MatrixUnreindexed::RowReverse, 
+                                                         EntryNew,
+                                                         ReindexEntry< ReindexFunctionOldToNew >
+                                                     >; 
+    type Column                 =   MapByTransform< 
+                                                         MatrixUnreindexed::Column, 
+                                                         EntryNew,
+                                                         ReindexEntry< ReindexFunctionOldToNew >
+                                                     >;    
+    type ColumnReverse          =   MapByTransform< 
+                                                         MatrixUnreindexed::ColumnReverse, 
+                                                         EntryNew,
+                                                         ReindexEntry< ReindexFunctionOldToNew >
+                                                     >;                                                                                                              
+    
+    fn row(                     &   self, index: & Self::RowIndex   )   -> Self::Row {
+        let selecting_index_new = (self.reindex_function_new_to_old).evaluate_function( index.clone() );
         let entry_reindexer = ReindexEntry::new( self.reindex_function_old_to_new.clone() );
         
         MapByTransform::new(
-            self.matrix_unreindexed.view_major_ascend( selecting_index_new ).into_iter(),
+            self.matrix_unreindexed.row( & selecting_index_new ),
             entry_reindexer,
         )
     }
+    
+    fn row_reverse(             &   self, index: & Self::RowIndex   )   -> Self::RowReverse {
+        let selecting_index_new = (self.reindex_function_new_to_old).evaluate_function( index.clone() );
+        let entry_reindexer = ReindexEntry::new( self.reindex_function_old_to_new.clone() );
+        
+        MapByTransform::new(
+            self.matrix_unreindexed.row_reverse( & selecting_index_new ),
+            entry_reindexer,
+        )
+    }
+    
+    fn column(                  &   self, index: & Self::ColumnIndex)   -> Self::Column {
+        let selecting_index_new = (self.reindex_function_new_to_old).evaluate_function( index.clone() );
+        let entry_reindexer = ReindexEntry::new( self.reindex_function_old_to_new.clone() );
+        
+        MapByTransform::new(
+            self.matrix_unreindexed.column( & selecting_index_new ),
+            entry_reindexer,
+        )
+    }
+    
+    fn column_reverse(          &   self, index: & Self::ColumnIndex)   -> Self::ColumnReverse {
+        let selecting_index_new = (self.reindex_function_new_to_old).evaluate_function( index.clone() );
+        let entry_reindexer = ReindexEntry::new( self.reindex_function_old_to_new.clone() );
+        
+        MapByTransform::new(
+            self.matrix_unreindexed.column_reverse( & selecting_index_new ),
+            entry_reindexer,
+        )
+    }
+    
+    fn has_row_for_index(     &   self, index: & Self::RowIndex   )   -> bool {
+        let selecting_index_new = (self.reindex_function_new_to_old).evaluate_function( index.clone() );
+        return self.matrix_unreindexed.has_row_for_index( & selecting_index_new )
+    }
+    
+    fn has_column_for_index(  &   self, index: & Self::ColumnIndex)   -> bool {
+        let selecting_index_new = (self.reindex_function_new_to_old).evaluate_function( index.clone() );
+        return self.matrix_unreindexed.has_column_for_index( & selecting_index_new )
+    }
+    
+    fn structural_nonzero_entry(&   self, row:   & Self::RowIndex, column: & Self::ColumnIndex ) ->  Option< Self::Coefficient > {
+        let row = (self.reindex_function_new_to_old).evaluate_function( row.clone() );
+        let column = (self.reindex_function_new_to_old).evaluate_function( column.clone() );
+
+        return self.matrix_unreindexed.structural_nonzero_entry( & row, & column )
+    }    
 }
 
-//  ViewColDescend
+
+
+
+
+
+
+
+
+
+//  REINDEX COLUMNS
+//  ---------------------------------------------------------------------
+
+/// Reindexes the *columns* of matrix, given a pair of functions that map old indices to new indices, and vice versa.
+/// 
+/// Concretely, suppose `f` is a function that maps new indices to old ones. If the original matrix `M` satisfies 
+/// ```text
+/// M[ i,f(j)] = t
+/// ```
+/// then the new matrix `N` then satisfies 
+/// ```text
+/// N[ i, j ] = t
+/// ```
+/// 
+/// The functions `reindex_function_old_to_new` and `reindex_function_new_to_old` must be muutally inverse.
+/// That is, `reindex_function_new_to_old(    reindex_function_old_to_new(  old_index   )    )` must equal
+/// `old_index`, for all column indices of `M`.  Otherwise the matrix `N` may violate some of the conditions
+/// required for a valid implementation of the [MatrixOracle] trait.
+/// 
+/// # Design notes
+/// 
+/// This construction relies on user-provided functions to map old indices to new and vice versa. 
+/// Currently the functions take full values as inputs, rather than references.
+/// References would probably give better performance in general, but they would introduce the
+/// need for explcit lifetime parameters and bounds, which gives added complexity. 
+/// At the time this documenation was written, the [ReindexMatrixColumns] struct is only used 
+/// once in the OAT library. If users find strong motivation for a more complex, reference-based implementation, this
+/// can be revisited.
+#[derive(Copy,Debug,Dissolve,Eq,PartialEq,Getters,Ord,PartialOrd)]
+pub struct ReindexMatrixColumns< MatrixUnreindexed, ReindexFunctionOldToNew, ReindexFunctionNewToOld, IndexOld, IndexNew, EntryNew > 
+{
+    matrix_unreindexed:             MatrixUnreindexed,
+    reindex_function_old_to_new:    ReindexFunctionOldToNew,
+    reindex_function_new_to_old:    ReindexFunctionNewToOld,    
+    phantom_indexold:               PhantomData< IndexOld >,
+    phantom_indexnew:               PhantomData< IndexNew >,
+    phantom_entrynew:               PhantomData< EntryNew >,
+}
+
+//  Implement the struct
 impl    < MatrixUnreindexed, ReindexFunctionOldToNew, ReindexFunctionNewToOld, IndexOld, IndexNew, EntryNew > 
 
-        ViewColDescend for 
+    ReindexMatrixColumns
+            < MatrixUnreindexed, ReindexFunctionOldToNew, ReindexFunctionNewToOld, IndexOld, IndexNew, EntryNew > 
+{
+    pub fn new( matrix_unreindexed: MatrixUnreindexed, reindex_function_old_to_new: ReindexFunctionOldToNew, reindex_function_new_to_old: ReindexFunctionNewToOld )
+        -> 
+        ReindexMatrixColumns
+            < MatrixUnreindexed, ReindexFunctionOldToNew, ReindexFunctionNewToOld, IndexOld, IndexNew, EntryNew > 
+    {
+        ReindexMatrixColumns{ matrix_unreindexed, reindex_function_old_to_new, reindex_function_new_to_old, phantom_indexnew: PhantomData, phantom_indexold: PhantomData, phantom_entrynew: PhantomData }
+    }                    
+}
 
-        ReindexSquareMatrix
+
+impl< MatrixUnreindexed, ReindexFunctionOldToNew, ReindexFunctionNewToOld, IndexOld, IndexNew, EntryNew >
+
+    Clone for
+
+    ReindexMatrixColumns
+        < MatrixUnreindexed, ReindexFunctionOldToNew, ReindexFunctionNewToOld, IndexOld, IndexNew, EntryNew >
+    where
+        MatrixUnreindexed:          Clone,
+        ReindexFunctionOldToNew:    Clone,
+        ReindexFunctionNewToOld:    Clone,
+    {
+        fn clone(&self) -> Self {
+            Self{ 
+                matrix_unreindexed:             self.matrix_unreindexed.clone(), 
+                reindex_function_old_to_new:    self.reindex_function_old_to_new.clone(), 
+                reindex_function_new_to_old:    self.reindex_function_new_to_old.clone(), 
+                phantom_indexold:               PhantomData, 
+                phantom_indexnew:               PhantomData, 
+                phantom_entrynew:               PhantomData 
+            }
+        }
+    }
+
+
+
+//  MatrixOracle
+impl    < MatrixUnreindexed, ReindexFunctionOldToNew, ReindexFunctionNewToOld, IndexOld, IndexNew, EntryNew > 
+
+        MatrixOracle for 
+
+        ReindexMatrixColumns
             < MatrixUnreindexed, ReindexFunctionOldToNew, ReindexFunctionNewToOld, IndexOld, IndexNew, EntryNew > 
 
         where
-            MatrixUnreindexed:                          IndicesAndCoefficients< ColIndex = IndexOld, RowIndex = IndexOld, >,
-            MatrixUnreindexed:                          ViewColDescend,
-            MatrixUnreindexed::ViewMinorDescend:        IntoIterator,
-            MatrixUnreindexed::EntryMinor:   KeyValGet< MatrixUnreindexed::ColIndex, MatrixUnreindexed::Coefficient >,
-            ReindexFunctionOldToNew:                    Clone + EvaluateFunction< MatrixUnreindexed::RowIndex, IndexNew >,
-            ReindexFunctionNewToOld:                    EvaluateFunction< IndexNew, MatrixUnreindexed::RowIndex >,  
-            EntryNew:                                   KeyValNew< IndexNew, MatrixUnreindexed::Coefficient >,          
-{
-    type ViewMinorDescend           =   MapByTransform< 
-                                                MatrixUnreindexed::ViewMinorDescendIntoIter, 
-                                                EntryNew,
-                                                ReindexEntry<   
-                                                        MatrixUnreindexed::EntryMinor,
-                                                        EntryNew,
-                                                        MatrixUnreindexed::ColIndex,
-                                                        IndexNew,
-                                                        MatrixUnreindexed::Coefficient,
-                                                        ReindexFunctionOldToNew,
-                                                    >
-                                            >;
-    type ViewMinorDescendIntoIter   =   Self::ViewMinorDescend;
+            MatrixUnreindexed:          MatrixOracle< ColumnIndex = IndexOld >,
+            ReindexFunctionOldToNew:    Clone + EvaluateFunction< IndexOld, IndexNew >,
+            ReindexFunctionNewToOld:    Clone + EvaluateFunction< IndexNew, MatrixUnreindexed::ColumnIndex >,
+            EntryNew:                   Clone + Debug + PartialEq + KeyValNew <  Key = IndexNew,  Val = MatrixUnreindexed::Coefficient   >,
+            IndexNew:                   Clone + Debug + Eq,
+{   
+    type RowEntry               =   EntryNew;    
+    type ColumnEntry            =   MatrixUnreindexed::ColumnEntry;        
+    type ColumnIndex            =   IndexNew;     
+    type RowIndex               =   MatrixUnreindexed::RowIndex;     
+    type Coefficient            =   MatrixUnreindexed::Coefficient;
 
-    fn view_minor_descend(&self, index: Self::ColIndex) -> Self::ViewMinorDescend {
-        let selecting_index_new = (self.reindex_function_new_to_old).evaluate_function( index );
+    type Row                    =   MapByTransform< 
+                                                         MatrixUnreindexed::Row, 
+                                                         EntryNew,
+                                                         ReindexEntry< ReindexFunctionOldToNew >
+                                                     >;    
+    type RowReverse             =   MapByTransform< 
+                                                         MatrixUnreindexed::RowReverse, 
+                                                         EntryNew,
+                                                         ReindexEntry< ReindexFunctionOldToNew >
+                                                     >; 
+    type Column                 =   MatrixUnreindexed::Column;    
+    type ColumnReverse          =   MatrixUnreindexed::ColumnReverse;                                                                                                              
+    
+    fn row(                     &   self, index: & Self::RowIndex   )   -> Self::Row {
         let entry_reindexer = ReindexEntry::new( self.reindex_function_old_to_new.clone() );
-
+        
         MapByTransform::new(
-            self.matrix_unreindexed.view_minor_descend( selecting_index_new ).into_iter(),
+            self.matrix_unreindexed.row( & index ),
             entry_reindexer,
         )
     }
-}       
+    
+    fn row_reverse(             &   self, index: & Self::RowIndex   )   -> Self::RowReverse {
+        let entry_reindexer = ReindexEntry::new( self.reindex_function_old_to_new.clone() );
+        
+        MapByTransform::new(
+            self.matrix_unreindexed.row_reverse( & index ),
+            entry_reindexer,
+        )
+    }
+    
+    fn column(                  &   self, index: & Self::ColumnIndex)   -> Self::Column {
+        let selecting_index_new = (self.reindex_function_new_to_old).evaluate_function( index.clone() );
+        self.matrix_unreindexed.column( & selecting_index_new )
+    }
+    
+    fn column_reverse(          &   self, index: & Self::ColumnIndex)   -> Self::ColumnReverse {
+        let selecting_index_new = (self.reindex_function_new_to_old).evaluate_function( index.clone() );
+        self.matrix_unreindexed.column_reverse( & selecting_index_new )
+    }
+    
+    fn has_row_for_index(     &   self, index: & Self::RowIndex   )   -> bool {
+        return self.matrix_unreindexed.has_row_for_index( index )
+    }
+    
+    fn has_column_for_index(  &   self, index: & Self::ColumnIndex)   -> bool {
+        let selecting_index_new = (self.reindex_function_new_to_old).evaluate_function( index.clone() );
+        return self.matrix_unreindexed.has_column_for_index( & selecting_index_new )
+    }
+    
+    fn structural_nonzero_entry(&   self, row:   & Self::RowIndex, column: & Self::ColumnIndex ) ->  Option< Self::Coefficient > {
+        let column = (self.reindex_function_new_to_old).evaluate_function( column.clone() );
+
+        return self.matrix_unreindexed.structural_nonzero_entry( row, & column )
+    }    
+}
+
+
+
+
+
+
+
+
+
 
 
 

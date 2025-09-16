@@ -4,7 +4,7 @@
 //! An entry in a vector `v`, is a pair `(i, a)` such that `v[i] = a`.
 //! There are many ways to store a vector entry in computer memory.  For example, you could store it
 //! as a tuple `(i, a)`, as dictionary `{i: a}`, etc.  However, there are some operations that nearly everyone wants to perform on an entry,
-//! no matter what data structure has been used to store it.  These operations are encoded in [traits](crate::tutorials::traits):
+//! no matter what data structure has been used to store it.  These operations are encoded in traits:
 //! 
 //! * [KeyValGet](crate::algebra::vectors::entries::KeyValGet) 
 //!     allows a user to find the value of  `i` or `a`.  
@@ -46,31 +46,31 @@
 //! ```
 
 
-use std::fmt;
 use std::fmt::{Debug};
-use std::marker::PhantomData;
 
-use auto_impl::auto_impl;
+
+use derive_getters::Dissolve;
+use derive_new::new;
 
 use crate::utilities::functions::evaluate::EvaluateFunction;
 
 
-//  ---------------------------------------------------------------------------
-//  KEY-VALUE TRAIT -- ESTABLISHING TYPES
-//  ---------------------------------------------------------------------------
+// //  ---------------------------------------------------------------------------
+// //  KEY-VALUE TRAIT -- ESTABLISHING TYPES
+// //  ---------------------------------------------------------------------------
 
-/// A trait with no methods, used to eliminate type ambiguity.
-pub trait KeyValTypes{
-    type Key;
-    type Val;
-}
+// /// A trait with no methods, used to eliminate type ambiguity.
+// pub trait KeyValTypes{
+//     type Key;
+//     type Val;
+// }
 
-// Auto-implement for tuples of length 2.
-// --------------------------------------
+// // Auto-implement for tuples of length 2.
+// // --------------------------------------
 
-impl < Key, Val > KeyValTypes for (Key, Val) {
-    type Key = Key; type Val = Val;
-}
+// impl < Key, Val > KeyValTypes for (Key, Val) {
+//     type Key = Key; type Val = Val;
+// }
 
 
 //  ---------------------------------------------------------------------------
@@ -106,17 +106,95 @@ impl < Key, Val > KeyValTypes for (Key, Val) {
 
 
 
+
+
+//  ---------------------------------------------------------------------------
+//  KEY-VALUE TRAIT -- EVERYTHING TOGETHER 
+//  ---------------------------------------------------------------------------
+
+
+/// A "super trait" encompassing three separate traits for key-value pairs: [KeyValGet], [KeyValSet], and [KeyValNew].
+/// 
+/// This trait will auto-implement on any type `T` that implements [KeyValGet], [KeyValSet], and [KeyValNew]. Therefore
+/// if you wish to implement this trait, you need only implement these three traits.
+pub trait KeyValPair: KeyValGet + KeyValSet + KeyValNew
+            {}
+
+impl < T > KeyValPair 
+    
+    for T
+
+    where
+        T: KeyValGet + KeyValSet + KeyValNew 
+{}        
+
+
+
+//  ---------------------------------------------------------------------------
+//  KEY-VALUE TRAIT -- GETTING 
+//  ---------------------------------------------------------------------------
+
+
 /// Get the key or value of a `(key, val)` pair (no matter the underlying data structure).
-#[auto_impl(&)] // this macro auto-implements the trait for immutable references to structs that implement the trait
-pub trait KeyValGet< Key, Val >
+// #[auto_impl(&)] // this macro auto-implements the trait for immutable references to structs that implement the trait
+pub trait KeyValGet
 
 {
+    type Key;
+    type Val;
+
     /// Get the key in the `(key, val)` pair.
-    fn key( &self ) -> Key;
+    fn key( &self ) -> Self::Key;
 
     /// Get the val in the `(key, val)` pair.    
-    fn val( &self ) -> Val;
+    fn val( &self ) -> Self::Val;
 }
+
+
+
+
+//  Auto-implement for references
+//  --------------------------------------
+
+impl< 'a, T >
+
+    KeyValGet
+    
+    for 
+    
+    &'a T
+    
+    where
+        T: KeyValGet
+{
+    type Key = T::Key;
+    type Val = T::Val;
+
+    fn key( &self ) -> Self::Key { (*self).key() }
+    fn val( &self ) -> Self::Val { (*self).val() }
+}
+
+
+impl< 'a, T >
+
+    KeyValGet
+    
+    for 
+    
+    &'a mut T
+    
+    where
+        T: KeyValGet
+{
+    type Key = T::Key;
+    type Val = T::Val;
+
+    fn key( &self ) -> Self::Key { (**self).key() }
+    fn val( &self ) -> Self::Val { (**self).val() }
+}
+
+
+
 
 
 // Auto-implement for tuples of length 2.
@@ -124,16 +202,18 @@ pub trait KeyValGet< Key, Val >
 
 impl< Key, Val >
 
-    KeyValGet < Key, Val >
+    KeyValGet
 
     for 
     
     ( Key, Val )
     
     where
-        Key: Clone, // this is basically required, since o/w have to implement copy
-        Val: Clone  // this is basically required, since o/w have to implement copy
+        Key:        Clone, // this is basically required, since o/w have to implement copy
+        Val:        Clone  // this is basically required, since o/w have to implement copy
 {
+    type Key = Key;
+    type Val = Val;
     fn key( &self ) -> Key { self.0.clone() }
     fn val( &self ) -> Val { self.1.clone() }
 }
@@ -145,16 +225,39 @@ impl< Key, Val >
 
 
 /// Set the key or value of a `(key, val)` pair (no matter the underlying data structure).
-#[auto_impl(&mut)] // this macro auto-implements the trait for mutable references to structs that implement the trait
-pub trait KeyValSet< Key, Val > : KeyValGet< Key, Val >
+pub trait KeyValSet: KeyValGet
 
 {
     /// Set the key of a `(key, val)` pair (no matter the underlying data structure).
-    fn set_key( &mut self, key: Key ) ;
+    fn set_key( &mut self, key: Self::Key ) ;
 
     /// Set the value of a `(key, val)` pair (no matter the underlying data structure).
-    fn set_val( &mut self, val: Val ) ;
+    fn set_val( &mut self, val: Self::Val ) ;
 }
+
+
+
+//  Auto-implement for references
+//  --------------------------------------
+
+impl< 'a, T >
+
+    KeyValSet 
+    
+    for 
+    
+    &'a mut T
+    
+    where
+        T: KeyValSet,
+{
+    fn set_key( &mut self, key: Self::Key ) { (*self).set_key( key ) }
+    fn set_val( &mut self, val: Self::Val ) { (*self).set_val( val ) }
+}
+
+
+
+
 
 
 //  Auto-implement for tuples of length 2.
@@ -162,7 +265,7 @@ pub trait KeyValSet< Key, Val > : KeyValGet< Key, Val >
 
 impl< Key, Val >
 
-    KeyValSet < Key, Val >
+    KeyValSet 
     
     for 
     
@@ -183,11 +286,11 @@ impl< Key, Val >
 
 
 /// Create a new key-value pair, with the desired data structure.
-pub trait KeyValNew< Key, Val >
+pub trait KeyValNew: KeyValGet
 
 {
     /// Set the key of a `(key, val)` pair (no matter the underlying data structure).
-    fn new( key: Key, val: Val ) -> Self ;
+    fn new( key: Self::Key, val: Self::Val ) -> Self ;
 
 }
 
@@ -197,11 +300,13 @@ pub trait KeyValNew< Key, Val >
 
 impl< Key, Val >
 
-    KeyValNew < Key, Val >
+    KeyValNew
     
-    for 
-    
-    ( Key, Val )
+    for ( Key, Val )
+
+    where
+        Key:    Clone,
+        Val:    Clone,
     
 {
     fn new( key: Key, val: Val ) -> Self { ( key, val ) }
@@ -218,26 +323,18 @@ impl< Key, Val >
 /// 
 /// This struct is specifically designed to implement the [`EvaluateFunction`](oat_rust::utilities::functions::evaluate::EvaluateFunction)
 /// trait.
-pub struct ExtractKey< Key, Val > { 
-    phantom_key: PhantomData< Key >, 
-    phantom_val: PhantomData< Val > 
-}
+#[derive(Copy, Clone, new, Dissolve, Eq, PartialEq, Debug)]
+pub struct ExtractKey{}
 
-impl < Key, Val > ExtractKey< Key, Val > {
-    /// Create a new struct `ExtractKey< Key, Val >`
-    pub fn new() -> ExtractKey< Key, Val > { ExtractKey{ phantom_key: PhantomData, phantom_val: PhantomData } }
-}
-
-impl < Key, Val, Entry > 
+impl < Key, Entry > 
 
     EvaluateFunction
         < Entry, Key > for 
 
     ExtractKey
-        < Key, Val >
 
     where
-        Entry:  KeyValGet< Key, Val > 
+        Entry:  KeyValGet< Key = Key > 
 
 {
     fn evaluate_function( &self, input: Entry ) -> Key {
@@ -254,26 +351,19 @@ impl < Key, Val, Entry >
 /// 
 /// This struct is specifically designed to implement the [`EvaluateFunction`](oat_rust::utilities::functions::evaluate::EvaluateFunction)
 /// trait.
-pub struct ExtractVal< Key, Val > { 
-    phantom_key: PhantomData< Key >, 
-    phantom_val: PhantomData< Val > 
-}
+#[derive(Copy, Clone, new, Dissolve, Eq, PartialEq, Debug)]
+pub struct ExtractVal{}
 
-impl < Key, Val > ExtractVal< Key, Val > {
-    /// Create a new struct `ExtractKey< Key, Val >`
-    pub fn new() -> ExtractVal< Key, Val > { ExtractVal{ phantom_key: PhantomData, phantom_val: PhantomData } }
-}
 
-impl < Key, Val, Entry > 
+impl < Val, Entry > 
 
     EvaluateFunction
         < Entry, Val > for 
 
     ExtractVal
-        < Key, Val >
 
     where
-        Entry:  KeyValGet< Key, Val > 
+        Entry:  KeyValGet< Val = Val > 
 
 {
     fn evaluate_function( &self, input: Entry ) -> Val {
@@ -289,39 +379,35 @@ impl < Key, Val, Entry >
 
 
 /// Struct representing a funciton that first changes an entry's index, then its entry type (concretely, the struct implements `EvaluateFunction< EntryOld, EntryNew >`).
-pub struct ReindexEntry< EntryOld, EntryNew, IndexOld, IndexNew, Coefficient, FunctionIndexOldToIndexNew > {
+#[derive(Copy, Clone, new, Dissolve, Eq, PartialEq, Debug)]
+pub struct ReindexEntry< FunctionIndexOldToIndexNew > {
     function_entry_old_to_entry_new:    FunctionIndexOldToIndexNew,
-    phantom_entryold:                   PhantomData< EntryOld >,
-    phantom_entrynew:                   PhantomData< EntryNew >,
-    phantom_indexold:                   PhantomData< IndexOld >,
-    phantom_indexnew:                   PhantomData< IndexNew >,    
-    phantom_snzval:                     PhantomData< Coefficient >
 }
 
-//  Implement the struct
-impl < EntryOld, EntryNew, IndexOld, IndexNew, Coefficient, FunctionIndexOldToIndexNew >
+// //  Implement the struct
+// impl < EntryOld, EntryNew, IndexOld, IndexNew, Coefficient, FunctionIndexOldToIndexNew >
 
-    ReindexEntry
-        < EntryOld, EntryNew, IndexOld, IndexNew, Coefficient, FunctionIndexOldToIndexNew >
-{
-    pub fn new( function_entry_old_to_entry_new: FunctionIndexOldToIndexNew ) -> Self {
-        ReindexEntry{ function_entry_old_to_entry_new, phantom_entrynew: PhantomData, phantom_entryold: PhantomData, phantom_indexnew: PhantomData, phantom_indexold: PhantomData, phantom_snzval: PhantomData }
-    }
-}
+//     ReindexEntry
+//         < EntryOld, EntryNew, IndexOld, IndexNew, Coefficient, FunctionIndexOldToIndexNew >
+// {
+//     pub fn new( function_entry_old_to_entry_new: FunctionIndexOldToIndexNew ) -> Self {
+//         ReindexEntry{ function_entry_old_to_entry_new, phantom_entrynew: PhantomData, phantom_entryold: PhantomData, phantom_indexnew: PhantomData, phantom_indexold: PhantomData, phantom_snzval: PhantomData }
+//     }
+// }
 
 //  EvaluateFunction
-impl < EntryOld, EntryNew, IndexOld, IndexNew, Coefficient, FunctionIndexOldToIndexNew >
+impl < EntryOld, EntryNew, FunctionIndexOldToIndexNew >
 
     EvaluateFunction
         < EntryOld, EntryNew > for
     
     ReindexEntry
-        < EntryOld, EntryNew, IndexOld, IndexNew, Coefficient, FunctionIndexOldToIndexNew >
+        < FunctionIndexOldToIndexNew >
 
     where
-        EntryOld:                   KeyValGet< IndexOld, Coefficient >,
-        EntryNew:                   KeyValNew< IndexNew, Coefficient >,
-        FunctionIndexOldToIndexNew: EvaluateFunction< IndexOld, IndexNew >,
+        EntryOld:                   KeyValGet,
+        EntryNew:                   KeyValNew< Val = EntryOld::Val >,
+        FunctionIndexOldToIndexNew: EvaluateFunction< EntryOld::Key, EntryNew::Key >,
 {
     fn evaluate_function(&self, input: EntryOld) -> EntryNew {
         let index_new           =   (self.function_entry_old_to_entry_new).evaluate_function( input.key() );
@@ -349,70 +435,70 @@ impl < EntryOld, EntryNew, IndexOld, IndexNew, Coefficient, FunctionIndexOldToIn
 
 
 
-//  ---------------------------------------------------------------------------
-//  KEY-VALUE ITEM STRUCT
-//  ---------------------------------------------------------------------------
+// //  ---------------------------------------------------------------------------
+// //  KEY-VALUE ITEM STRUCT
+// //  ---------------------------------------------------------------------------
 
 
-/// Struct that encodes a key-value pair.
-///
-/// Preferred to a tuple `(key, val)`, since the latter may require 
-/// [rewriting in memory](https://www.reddit.com/r/rust/comments/79ry4s/tuple_performance/), 
-/// and also has memory overhead for length (or does it?  have to check).
-#[derive( Clone )]
-pub struct KeyValItem< Key, Val > 
-   // where Key: Clone + Debug,
-   //       Val: Clone + Debug
-{   
-    pub key: Key, 
-    pub val: Val 
-}
+// /// Struct that encodes a key-value pair.
+// ///
+// /// Preferred to a tuple `(key, val)`, since the latter may require 
+// /// [rewriting in memory](https://www.reddit.com/r/rust/comments/79ry4s/tuple_performance/), 
+// /// and also has memory overhead for length (or does it?  have to check).
+// #[derive( Clone )]
+// pub struct KeyValItem< Key, Val > 
+//    // where Key: Clone + Debug,
+//    //       Val: Clone + Debug
+// {   
+//     pub key: Key, 
+//     pub val: Val 
+// }
 
 
-//  Custom implementaiton of debug
-//  ------------------------------
-impl < Key, Val >
-    Debug for KeyValItem 
-    < Key, Val > 
+// //  Custom implementaiton of debug
+// //  ------------------------------
+// impl < Key, Val >
+//     Debug for KeyValItem 
+//     < Key, Val > 
 
-    where Key:  Debug,
-          Val:  Debug
+//     where Key:  Debug,
+//           Val:  Debug
 
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("P")
-         .field(&self.key)
-         .field(&self.val)
-         .finish()
-    }
-}
+// {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         f.debug_tuple("P")
+//          .field(&self.key)
+//          .field(&self.val)
+//          .finish()
+//     }
+// }
 
-//  Implement KeyValGet 
-//  ------------------------------
+// //  Implement KeyValGet 
+// //  ------------------------------
 
-impl< Key, Val >
-    KeyValGet < Key, Val >
-    for 
-    KeyValItem< Key, Val > 
-    where
-        Key: Clone,
-        Val: Clone
-{
-    fn key( &self ) -> Key { self.key.clone() }
-    fn val( &self ) -> Val { self.val.clone() }
-}
+// impl< Key, Val >
+//     KeyValGet < Key, Val >
+//     for 
+//     KeyValItem< Key, Val > 
+//     where
+//         Key: Clone,
+//         Val: Clone
+// {
+//     fn key( &self ) -> Key { self.key.clone() }
+//     fn val( &self ) -> Val { self.val.clone() }
+// }
 
-//  Implement KeyValSet
-//  --------------------------------------
+// //  Implement KeyValSet
+// //  --------------------------------------
 
-impl< Key, Val >
-    KeyValSet < Key, Val >
-    for 
-    KeyValItem< Key, Val > 
-    where
-        Key: Clone,
-        Val: Clone
-{
-    fn set_key( &mut self, key: Key ) { self.key = key }
-    fn set_val( &mut self, val: Val ) { self.val = val }
-}
+// impl< Key, Val >
+//     KeyValSet < Key, Val >
+//     for 
+//     KeyValItem< Key, Val > 
+//     where
+//         Key: Clone,
+//         Val: Clone
+// {
+//     fn set_key( &mut self, key: Key ) { self.key = key }
+//     fn set_val( &mut self, val: Val ) { self.val = val }
+// }

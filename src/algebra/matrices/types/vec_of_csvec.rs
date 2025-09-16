@@ -1,26 +1,18 @@
 
-use crate::algebra::matrices::query::{   ViewRow,
-                                        ViewRowAscend,
-                                        ViewRowDescend,
-                                        ViewCol, 
-                                        ViewColAscend,
-                                        ViewColDescend,
-                                        WhichMajor,
-                                        MajorDimension};
 use std::iter;
 
 
-pub struct VecCsv< ColIndex, Coefficient >
+pub struct VecCsv< ColumnIndex, Coefficient >
 {
     major_dimension: MajorDimension, 
-    min_ind: Vec< Vec< ColIndex > > ,
+    min_ind: Vec< Vec< ColumnIndex > > ,
     snz_val: Vec< Vec< Coefficient > >
 }
 
 
-impl    < ColIndex, Coefficient >
+impl    < ColumnIndex, Coefficient >
         VecOfVec 
-        < ColIndex, Coefficient > 
+        < ColumnIndex, Coefficient > 
 {
     // Make new (empty) VecOfVec. 
     pub fn new( major_dimension: MajorDimension ) -> Self  

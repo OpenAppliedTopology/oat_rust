@@ -4,13 +4,13 @@
 //! It is a matrix equation
 //! 
 //! ```text
-//! RM = DC
+//! TM = DS
 //! ```
-//! where `D` is an `m` x `n` matrix, `R` and `C` are upper unitriangular matrices, and `M` is a generalized matching matrix.  We call
+//! where `D` is an `m` x `n` matrix, `S` and `T` are upper triangular matrices with 1's on the diagonal, and `M` is a generalized matching matrix.  We call
 //! 
-//! - `D` the mapping array
-//! - `R` the codomain COMB
-//! - `C` the domain COMB
+//! - `D` the factored matrix
+//! - `T` the target COMB
+//! - `S` the source COMB
 //! - `M` the matching matrix
 //! 
 //! # Solving kernels, images, and systems of equations
@@ -20,21 +20,70 @@
 //! - solving [`Dx = b`](crate::algebra::matrices::operations::umatch::row_major::Umatch::solve_dx_equals_b) and [`xD = b`](crate::algebra::matrices::operations::umatch::row_major::Umatch::solve_xd_equals_b) for `x`
 //! - computing bases for the [image](crate::algebra::matrices::operations::umatch::row_major::Umatch::image) and [kernel](crate::algebra::matrices::operations::umatch::row_major::Umatch::kernel) of `D`
 //! 
-//! for example, `{R[:,i] : M[i,j] != 0 }` is a basis for column space of `D`, and `{ C[:,j] : M[i,j] != 0 }` is a basis for the kernel of `D`.
+//! for example, `{T[:,i] : M[i,j] != 0 }` is a basis for column space of `D`, and `{ S[:,j] : M[i,j] != 0 }` is a basis for the kernel of `D`.
 //! 
-//! OAT provides functionality to compute a U-match factorization, via the function  `Umatch::factor`.
-//! This produces an `Umatch` struct that provides the user with access to `M`, `R`, `R^{-1}`, `C`, and `C^{-1}`.
+//! OAT provides functionality to compute a U-match factorization, via the function  `Umatch::new`.
+//! This produces an `Umatch` struct that provides the user with access to `M`, `S`, `S^{-1}`, `T`, and `T^{-1}`.
 //! 
 //! # Memory-efficiency
 //! 
-//! When OAT computes a U-match factorization, it stores only three items in memory: the mapping array `D`, the generalized matching array `M`, and the square submatrix of `R^{-1}` indexed by row-pivot indices.
-//! It can be [shown](https://arxiv.org/abs/2108.08831) that this information suffices to reconstruct any row or column of `M`, `R`, `R^{-1}`, `C`, and `C^{-1}` efficiently (row access is generally much faster than column access).
+//! When OAT computes a U-match factorization, it stores only three items in memory: the factored matrix `D`, the generalized matching array `M`, and the square submatrix of `T^{-1}` indexed by row-pivot indices.
+//! It can be [shown](https://arxiv.org/abs/2108.08831) that this information suffices to reconstruct any row or column of `M`, `S`, `S^{-1}`, `T`, and `T^{-1}` efficiently (row access is generally much faster than column access).
 //! This makes U-match factorization highly memory efficient, in practice.
 //! 
 
+use crate::algebra::matrices::{query::MatrixOracle, types::matching::{GeneralizedMatchingMatrix, GeneralizedMatchingMatrixWithSequentialOrder}};
+
+use std::hash::Hash;
 
 
 // pub mod row_major_only;
+pub mod gimbled;
 pub mod row_major;
-pub mod developer;
+pub mod differential;
+// pub mod developer;
 // pub mod diagnostics;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// pub trait UmatchOracle< MatrixToFactor > 
+//     where
+//         MatrixToFactor:     MatrixOracle<
+//                                 ColumnIndex: Hash, // required for the generalized matching matrix
+//                                 RowIndex:    Hash, // required for the generalized matching matrix
+//                             >,
+// {
+//     type SourceComb;
+//     type TargetComb;
+//     type SourceCombInverse;
+//     type TargetCombInverse;
+
+//     fn source_comb(&self) -> Self::SourceComb;
+//     fn target_comb(&self) -> Self::TargetComb;
+//     fn source_comb_inverse(&self) -> Self::SourceCombInverse;
+//     fn target_comb_inverse(&self) -> Self::TargetCombInverse;
+//     fn generalized_matching_matrix<'a>(&'a self) -> &'a GeneralizedMatchingMatrixWithSequentialOrder<
+//         MatrixToFactor::ColumnIndex,
+//         MatrixToFactor::RowIndex,
+//         MatrixToFactor::Coefficient
+//     >;
+// }

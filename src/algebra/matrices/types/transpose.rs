@@ -1,6 +1,12 @@
-//! Lazy transpose and anti-transpose; wraps around another matrix, and swaps order and/or major vs. minor views.
+//! Lazy transpose and anti-transpose; wraps around another matrix, and swaps order and/or major vs. columns.
 
-use crate::{algebra::matrices::query::{ViewRowAscend, ViewColDescend, ViewRowDescend, ViewColAscend, IndicesAndCoefficients, ViewRow, ViewCol, MatrixOracle}, };
+use derive_getters::{Getters, Dissolve};
+use derive_new::new;
+
+use crate::algebra::matrices::query::{MatrixOracle, MatrixAlgebra};
+use crate::algebra::matrices::operations::MatrixOracleOperations;
+use crate::algebra::chain_complexes::ChainComplex;
+use crate::utilities::order::ReverseOrder;
 
 
 
@@ -10,99 +16,144 @@ use crate::{algebra::matrices::query::{ViewRowAscend, ViewColDescend, ViewRowDes
 //  ANTITRANSPOSE
 //  -----------------------------------------------------------------------------------------------
 
-/// Antitranpose of a matrix, evaluated in a lazy fashion. (warning: doesn't work quite the same as for ordinary dense matrices)
+/// Order anti-tranpose of a matrix, evaluated in a lazy fashion. (caution: this doesn't work quite the same as normal anti-transpose for matrices indexed by integers)
 /// 
-/// Concretely, the antitranpose is obtained by (i) transposing, and then (ii) reversing the order of rows and reversing the order of columns.
+/// Concretely, if `m` is a matrix and `a = OrderAntiTranspose::new(m)` then
+/// - `a.row(&index)`         returns `m.column_reverse(&index)`
+/// - `a.row_reverse(&index)` returns `m.column(&index)`
+/// - `a.column(&index)` returns         `m.row_reverse(&index)`
+/// - `a.column_reverse(&index)` returns `m.row(&index)`
+/// - `a.structural_nonzero_entry(&i, &j)` returns `m.structural_nonzero_entry(&j, &i)`
+/// 
 /// 
 /// This struct is "lazy" in the sense that it does not transform the underlying data; rather, it simply swaps access commands with other
-/// access commands.  For example, to execute the method `view_major_ascend`, an `AntiTranspose` struct simply calls `view_minor_descend` on
-/// the underlying matrix.   **Note that doesn't work quite the same as for ordinary dense matrices when indices happen to be integers.**
+/// access commands.  
+/// 
 /// 
 /// # Caution
 /// 
-/// There are three important differences between [AntiTranspose] and the matrix returned by [antitranspose_deep](crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec::antitranspose_deep):
+/// This operation doesn't work quite the same as for normal anti-transpose for matrices indexed by integers.
+/// **The key difference is that [OrderAntiTranspose] does not change the index of any nonzero entry. All it does is change the order in which row and column iterators return entries.**
 /// 
-/// - [AntiTranspose] is a lazy object that does not generate new data
-/// - The set of (key,val) pairs that appear in a major (respectively, minor) view of `AntiTranspose::new(matrix)`
-///   are the *same* as the entries in a minor (respectively, major) view of `matrix`; only the sequence in which those entries appear is different.
-///   By contrast, the keys in the (key,val) pairs of [matrix.antitranspose_deep()](crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec::antitranspose_deep) are different;
-///   they are obtained by subtracting the original keys from (# rows in the antitransposed matrix - 1).
-/// - For this reason, [matrix.antitranspose_deep()](crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec::antitranspose_deep) is only available for
-///   very specific types of matrices; [AntiTranspose] is available for a much broader class.
+/// To illustrate, let `m` be the following matrix:
+/// 
+/// ```text
+/// 0 5
+/// 0 0
+/// 0 6
+/// 7 8
+/// ```
+/// 
+/// Let `x` be the normal anti-transpose of `m`, which is 
+/// 
+/// ```text
+/// 8 6 0 5
+/// 7 0 0 0
+/// ```
+/// 
+/// Finally, suppose that `o = OrderAntiTranspose::new(m)`. Then
+/// 
+/// - `o.structural_nonzero_entry(&0,&0) = None` because `o.structural_nonzero_entry(&0,&0) = m.structural_nonzero_entry(&0,&0)`. However,
+/// - `x.structural_nonzero_entry(&0,&0) = Some(8)`
+/// - `o.row(&1) = [(3,8),(2,6),(0,5)]`, however
+/// - `x.row(&1) = [(0,7)]`
+/// 
+/// **If you need to obtain `x` instead of `o`, see the [antitranspose_deep](crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec::antitranspose_deep) method
+/// for [VecOfVec](crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec) datastructures.** Note that this operation is only available 
+/// for matrices with rows and columns indexed by integers.
+/// 
+/// 
+/// 
+/// # Matrix operators
+/// 
+/// If `Matrix` implements [MatrixAlgebra] then so does `OrderAntiTranspose<Matrix>`. 
+/// - `OrderAntiTranspose<Matrix>` has the same ring operator as `Matrix`
+/// - `OrderAntiTranspose<Matrix>` has all the same order operators as `Matrix`, but *reversed*. For example, if `Matrix::OrderOperatorForRowEntries` has type `T`, then
+/// `OrderAntiTranspose<Matrix>::OrderOperatorForRowOperators` has type `ReverseOrder<T>`.
+/// 
 /// 
 /// # Examples
 /// 
 /// ```
-/// use oat_rust::algebra::matrices::types::transpose::{Transpose, AntiTranspose};
+/// use oat_rust::algebra::matrices::types::transpose::{Transpose, OrderAntiTranspose};
 /// use oat_rust::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
 /// use oat_rust::algebra::matrices::query::MatrixOracle;
-/// use itertools;
+/// use oat_rust::utilities::iterators::general::result_iterators_are_elementwise_equal;
 /// 
 /// // matrix
-/// let a     =   VecOfVec::new( vec![
-///                                 vec![ (0,0), (1,1), (2,2) ],
-///                                 vec![ (0,3), (1,4), (2,5) ],
-///                              ] );
+/// let matrix: & VecOfVec<usize,usize> =   & VecOfVec::new( vec![
+///                                             vec![ (0,0), (1,1), (2,2) ],
+///                                             vec![ (0,3), (1,4), (2,5) ],
+///                                         ] ).ok().unwrap();
 /// 
 /// // its transpose
-/// let tran    =   Transpose::new( &a );
+/// let tran    =   Transpose::new( &matrix );
 /// 
 /// // its antitranspose
-/// let anti    =   AntiTranspose::new( &a );                                                                                                                                 
+/// let anti    =   OrderAntiTranspose::new( &matrix );
 /// 
 /// 
-/// for row in 0 .. 2 {
-///     
-///     assert!( itertools::equal( (&a).row(row),                           tran.column( row ) )                        );
-///     assert!( itertools::equal( (&a).row_opt(row).unwrap(),              tran.column_opt( row ).unwrap() )           );
-///     assert!( itertools::equal( (&a).row_reverse(row),                   tran.column_reverse( row))                  );
-///     assert!( itertools::equal( (&a).row_reverse_opt(row).unwrap(),      tran.column_reverse_opt( row).unwrap() )    );
-/// 
-///     assert!( itertools::equal( (&a).row_reverse(row),                   anti.column( row) )                         );
-///     assert!( itertools::equal( (&a).row_reverse_opt(row).unwrap(),      anti.column_opt( row).unwrap() )            ); 
-///     assert!( itertools::equal( (&a).row(row),                           anti.column_reverse( row) )                 );
-///     assert!( itertools::equal( (&a).row_opt(row).unwrap(),              anti.column_reverse_opt( row).unwrap() )    );
+/// // check that rows and columns are (anti)transposed correctly
+/// for index in 0 .. 2 {
+///     assert!( matrix.row(&index).eq(                  tran.column(&index) )               );
+///     assert!( matrix.row_reverse(&index).eq(          tran.column_reverse(&index) )       );            
+///     assert!( matrix.row(&index).eq(                  anti.column_reverse(&index) )       );
+///     assert!( matrix.row_reverse(&index).eq(          anti.column(&index) )               );
 /// }
 /// 
-/// for col in 0 .. 3 {
+/// for index in 0 .. 3 {
+///     assert!( matrix.column(&index).eq(                tran.row(&index) )                 );
+///     assert!( matrix.column_reverse(&index).eq(        tran.row_reverse(&index) )         );
+///     assert!( matrix.column(&index).eq(                anti.row_reverse(&index) )         );            
+///     assert!( matrix.column_reverse(&index).eq(        anti.row(&index) )                 );
+/// }        
+///                                                                                             
+/// // check that rows and columns are (anti)transposed correctly, even when we pass invalid indices     
+/// for index in 0 .. 5 {    
+///     assert!( result_iterators_are_elementwise_equal( 
+///         matrix.row_result(&index),                 tran.column_result(&index) 
+///     ));    
+///     assert!( result_iterators_are_elementwise_equal( 
+///         matrix.row_result(&index),                 anti.column_reverse_result(&index) 
+///     ));    
 /// 
-///     assert!( itertools::equal( (&a).column(col),                        tran.row(col) )                             );
-///     assert!( itertools::equal( (&a).column_opt(col).unwrap(),           tran.row_opt(col).unwrap() )                );
-///     assert!( itertools::equal( (&a).column_reverse(col),                tran.row_reverse(col) )                     );
-///     assert!( itertools::equal( (&a).column_reverse_opt(col).unwrap(),   tran.row_reverse_opt(col).unwrap() )        );
-///     
-///     assert!( itertools::equal( (&a).column(col),                        anti.row_reverse(col) )                     );
-///     assert!( itertools::equal( (&a).column_opt(col).unwrap(),           anti.row_reverse_opt(col).unwrap() )        );
-///     assert!( itertools::equal( (&a).column_reverse(col),                anti.row(col) )                             );
-///     assert!( itertools::equal( (&a).column_reverse_opt(col).unwrap(),   anti.row_opt(col).unwrap() )                );
-/// }  
+///     assert!( result_iterators_are_elementwise_equal( 
+///         matrix.row_reverse_result(&index),         tran.column_reverse_result(&index) 
+///     ));  
+///     assert!( result_iterators_are_elementwise_equal( 
+///         matrix.row_reverse_result(&index),         anti.column_result(&index) 
+///     ));                                       
+/// }
+/// 
+/// for index in 0 .. 5 {    
+///     assert!( result_iterators_are_elementwise_equal( 
+///         matrix.column_result(&index),                 tran.row_result(&index) 
+///     ));    
+///     assert!( result_iterators_are_elementwise_equal( 
+///         matrix.column_result(&index),                 anti.row_reverse_result(&index) 
+///     ));    
+/// 
+///     assert!( result_iterators_are_elementwise_equal( 
+///         matrix.column_reverse_result(&index),         tran.row_reverse_result(&index) 
+///     ));  
+///     assert!( result_iterators_are_elementwise_equal( 
+///         matrix.column_reverse_result(&index),         anti.row_result(&index) 
+///     ));                                       
+/// }
 /// ```
-pub struct AntiTranspose< Matrix > { unantitransposed: Matrix }
-
-impl < Matrix >
-
-    AntiTranspose
-        < Matrix >
-{
-    pub fn new( unantitransposed: Matrix ) -> AntiTranspose< Matrix > { AntiTranspose { unantitransposed } }
-}
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Getters, Dissolve, new)]
+pub struct OrderAntiTranspose< Matrix > { matrix_to_antitranspose: Matrix }
 
 
-    //  CLONE
-impl < Matrix: Clone > 
 
-    Clone for
+//  MATRIX ORACLE
+//  ---------------------------
 
-    AntiTranspose< Matrix >
-
-{ fn clone(&self) -> Self { AntiTranspose { unantitransposed: self.unantitransposed.clone() } } }    
-
-    //  MATRIX ORACLE
 impl< Matrix > 
 
     MatrixOracle for 
     
-    AntiTranspose< Matrix >
+    OrderAntiTranspose< Matrix >
 
     where
         Matrix:     MatrixOracle
@@ -112,211 +163,135 @@ impl< Matrix >
     type RowIndex           =   Matrix::ColumnIndex;          // The type key used to look up rows.  Matrices can have rows indexed by anything: integers, simplices, strings, etc.
     type ColumnIndex        =   Matrix::RowIndex;       // The type of column indices
     
-    type RowEntry           =   Matrix::ColumnEntry;          // The type of entries in each row; these are essentially pairs of form `(column_index, coefficient)`
-    type ColumnEntry        =   Matrix::RowEntry;       // The type of entries in each column; these are essentially pairs of form `(row_index, coefficient)`
+    type RowEntry           =   Matrix::ColumnEntry;          // The type of entries in each row; these are essentially pairs of form `(&column_index, coefficient)`
+    type ColumnEntry        =   Matrix::RowEntry;       // The type of entries in each column; these are essentially pairs of form `(&row_index, coefficient)`
     
     type Row                =   Matrix::ColumnReverse;               // What you get when you ask for a row.
-    type RowIter            =   Matrix::ColumnReverseIter;           // What you get when you call `row.into_iter()`, where `row` is a row
     type RowReverse         =   Matrix::Column;        // What you get when you ask for a row with the order of entries reversed
-    type RowReverseIter     =   Matrix::ColumnIter;    // What you get when you call `row_reverse.into_iter()`, where `row_reverse` is a reversed row (which is a row with order of entries reversed)
     
     type Column             =   Matrix::RowReverse;            // What you get when you ask for a column
-    type ColumnIter         =   Matrix::RowReverseIter;        // What you get when you call `column.into_iter()`, where `column` is a column
     type ColumnReverse      =   Matrix::Row;     // What you get when you ask for a column with the order of entries reversed 
-    type ColumnReverseIter  =   Matrix::RowIter; // What you get when you call `column_reverse.into_iter()`, where `column_reverse` is a reversed column (which is a column with order of entries reversed)
 
-    fn entry(                   & self,  row: Self::RowIndex, column: Self::ColumnIndex )   ->  Option< Self::Coefficient > {
-        self.unantitransposed.entry( column, row )
+    fn structural_nonzero_entry(                   &   self, row:   & Self::RowIndex, column: & Self::ColumnIndex ) ->  Option< Self::Coefficient > {
+        self.matrix_to_antitranspose.structural_nonzero_entry( column, row )
     }
+    fn has_row_for_index(     &   self, index: &Self::RowIndex   )   -> bool 
+        { self.matrix_to_antitranspose.has_column_for_index(index) }        
+    fn has_column_for_index(  &   self, index: & Self::ColumnIndex)   -> bool 
+        { self.matrix_to_antitranspose.has_row_for_index(index) }    
 
-    fn row(                     & self,  index: Self::RowIndex    )       -> Self::Row 
-        { self.unantitransposed.column_reverse(index) }
-    fn row_opt(                 & self,  index: Self::RowIndex    )   -> Option<Self::Row>
-        { self.unantitransposed.column_reverse_opt(index) }     
-    fn row_reverse(             & self,  index: Self::RowIndex    )       -> Self::RowReverse
-        { self.unantitransposed.column(index) }    
-    fn row_reverse_opt(         & self,  index: Self::RowIndex    )   -> Option<Self::RowReverse>
-        { self.unantitransposed.column_opt(index) }
+    fn row(                     &self,  index: &Self::RowIndex    )       -> Self::Row 
+        { self.matrix_to_antitranspose.column_reverse(index) }
+    fn row_result(                 &   self, index: & Self::RowIndex   )   -> Result< Self::Row, Self::RowIndex >
+        { self.matrix_to_antitranspose.column_reverse_result(index) }     
+    fn row_reverse(             &self,  index: &Self::RowIndex    )       -> Self::RowReverse
+        { self.matrix_to_antitranspose.column(index) }    
+    fn row_reverse_result(         &   self, index: & Self::RowIndex   )   -> Result< Self::RowReverse, Self::RowIndex >
+        { self.matrix_to_antitranspose.column_result(index) }
     
-    fn column(                  & self,  index: Self::ColumnIndex )       -> Self::Column
-        { self.unantitransposed.row_reverse(index) }
-    fn column_opt(              & self,  index: Self::ColumnIndex )   -> Option<Self::Column>
-        { self.unantitransposed.row_reverse_opt(index) }    
-    fn column_reverse(          & self,  index: Self::ColumnIndex )       -> Self::ColumnReverse
-        { self.unantitransposed.row(index) }
-    fn column_reverse_opt(      & self,  index: Self::ColumnIndex )   -> Option<Self::ColumnReverse>
-        { self.unantitransposed.row_opt(index) }
+    fn column(                  &self,  index: &Self::ColumnIndex )       -> Self::Column
+        { self.matrix_to_antitranspose.row_reverse(index) }
+    fn column_result(      &   self, index: & Self::ColumnIndex)   -> Result< Self::Column, Self::ColumnIndex >
+        { self.matrix_to_antitranspose.row_reverse_result(index) }    
+    fn column_reverse(          &self,  index: &Self::ColumnIndex )       -> Self::ColumnReverse
+        { self.matrix_to_antitranspose.row(index) }
+    fn column_reverse_result(      &   self, index: & Self::ColumnIndex)   -> Result< Self::ColumnReverse, Self::ColumnIndex >
+        { self.matrix_to_antitranspose.row_result(index) }
 } 
 
 
-    //  INDICES AND COEFFICIENTS
-impl < Matrix: IndicesAndCoefficients > 
-
-    IndicesAndCoefficients for
-
-    AntiTranspose< Matrix >
-
-{ 
-    type ColIndex = Matrix::RowIndex; 
-    type RowIndex = Matrix::ColIndex; 
-    type Coefficient = Matrix::Coefficient;
-    type EntryMajor = Matrix::EntryMinor;
-    type EntryMinor = Matrix::EntryMajor;
-}    
+//  MATRIX ALGEBRA
+//  --------------------------
 
 
-    //  MAJOR ASCEND
-impl < Matrix > 
+impl < Matrix >
 
-    ViewRowAscend for 
+    MatrixAlgebra for
 
-    AntiTranspose< Matrix >
+    OrderAntiTranspose
+        < Matrix > where
 
-    where
-        Matrix:                     ViewColDescend + IndicesAndCoefficients,
+    Matrix: MatrixAlgebra 
 {
-    type ViewMajorAscend            = Matrix::ViewMinorDescend;
-    type ViewMajorAscendIntoIter    = Matrix::ViewMinorDescendIntoIter;
+    type OrderOperatorForColumnEntries =   ReverseOrder< Matrix::OrderOperatorForRowEntries >;
+    type OrderOperatorForColumnIndices =   ReverseOrder< Matrix::OrderOperatorForRowIndices >;
+    type OrderOperatorForRowEntries    =   ReverseOrder< Matrix::OrderOperatorForColumnEntries >;
+    type OrderOperatorForRowIndices    =   ReverseOrder< Matrix::OrderOperatorForColumnIndices >;
+    type RingOperator               =   Matrix::RingOperator;
 
-    fn   view_major_ascend( &self, index: Self::RowIndex ) -> Self::ViewMajorAscend {  self.unantitransposed.view_minor_descend( index ) } 
+    fn order_operator_for_column_entries( &self ) -> Self::OrderOperatorForColumnEntries { 
+        ReverseOrder::new( self.matrix_to_antitranspose.order_operator_for_row_entries() )
+    }
+    fn order_operator_for_column_indices( &self ) -> Self::OrderOperatorForColumnIndices { 
+        ReverseOrder::new( self.matrix_to_antitranspose.order_operator_for_row_indices() )
+    }   
+    fn order_operator_for_row_entries( &self ) -> Self::OrderOperatorForRowEntries { 
+        ReverseOrder::new( self.matrix_to_antitranspose.order_operator_for_column_entries() )
+    }
+    fn order_operator_for_row_indices( &self ) -> Self::OrderOperatorForRowIndices { 
+        ReverseOrder::new( self.matrix_to_antitranspose.order_operator_for_column_indices() )
+    }
+    fn ring_operator( &self ) -> Self::RingOperator {
+        self.matrix_to_antitranspose.ring_operator()
+    }     
 }
 
 
-//  MAJOR DESCEND
-impl < Matrix > 
 
-    ViewRowDescend for 
+//  MATRIX ORACLE OPERATIONS
+//  ---------------------------
 
-    AntiTranspose< Matrix >
+impl< Matrix > 
 
-    where
-        Matrix:                     ViewColAscend + IndicesAndCoefficients,
-{
-    type ViewMajorDescend           =   Matrix::ViewMinorAscend;
-    type ViewMajorDescendIntoIter   =   Matrix::ViewMinorAscendIntoIter;
-
-    fn   view_major_descend( &self, index: Self::RowIndex ) -> Self::ViewMajorDescend {  self.unantitransposed.view_minor_ascend( index ) } 
-}
-
-
-//  MINOR ASCEND
-impl < Matrix > 
-
-    ViewColAscend for 
-
-    AntiTranspose< Matrix >
-
-    where
-        Matrix:                     ViewRowDescend + IndicesAndCoefficients,
-{
-    type ViewMinorAscend            =   Matrix::ViewMajorDescend;
-    type ViewMinorAscendIntoIter    =   Matrix::ViewMajorDescendIntoIter;
-
-    fn   view_minor_ascend( &self, index: Self::ColIndex ) -> Self::ViewMinorAscend {  self.unantitransposed.view_major_descend( index ) } 
-}
-
-
-//  MINOR DESCEND
-impl < Matrix > 
-
-    ViewColDescend for 
-
-    AntiTranspose< Matrix >
-
-    where
-        Matrix:                     ViewRowAscend + IndicesAndCoefficients,
-{
-    type ViewMinorDescend           =   Matrix::ViewMajorAscend;
-    type ViewMinorDescendIntoIter   =   Matrix::ViewMajorAscendIntoIter;
+    MatrixOracleOperations for 
     
-    fn   view_minor_descend( &self, index: Self::ColIndex ) -> Self::ViewMinorDescend {  self.unantitransposed.view_major_ascend( index ) } 
+    OrderAntiTranspose< Matrix >
+{}
+
+
+
+
+
+
+//  CHAIN COMPLEX
+//  --------------------------
+
+
+impl < Matrix, IndexForRowsAndColumns >
+
+    ChainComplex for
+
+    OrderAntiTranspose
+        < Matrix > where
+
+    Matrix:     ChainComplex + MatrixOracle< 
+                    RowIndex =  IndexForRowsAndColumns, 
+                    ColumnIndex = IndexForRowsAndColumns,
+                >,
+{
+
+    type BasisVectorIndicesIterable = Vec< Self::RowIndex >; 
+
+    /// Returns an iterable that runs over the indices of the basis vectors.
+    /// 
+    /// Indices should be returned sorted in the same order they are asigned in the rows/columns of the differential matrix.
+    /// That is, strictly increasing order with respect to `self.order_operator_for_row_indices()`.
+    fn basis_vector_indices_for_dimension( &self, dimension: isize ) -> Self::BasisVectorIndicesIterable {
+        let mut indices: Vec<_> = self.matrix_to_antitranspose.basis_vector_indices_for_dimension( dimension )
+            .into_iter()
+            .collect();
+        indices.reverse();
+        indices
+    }
+
+
+    /// Returns the dimension of the basis vector with the given index.
+    fn dimension_for_basis_vector_with_index( &self, index: & Self::RowIndex ) -> Result<isize, Self::RowIndex> {
+        self.matrix_to_antitranspose.dimension_for_basis_vector_with_index( index )
+    }
+
+
 }
-
-
-
-
-// //  ANTITRANSPOSE
-// //  -----------------------------------------------------------------------------------------------
-
-// /// Antitranpose of a matrix.
-// /// 
-// /// Concretely, the antitranpose is obtained by (i) transposing, and then (ii) reversing the order of rows and reversing the order of columns.
-// pub struct AntiTranspose< 'antitranspose, Matrix > { unantitransposed: &'antitranspose Matrix }
-
-// impl < 'antitranspose, Matrix >
-
-//     AntiTranspose
-//         < 'antitranspose, Matrix >
-//     {
-//         pub fn new( unantitransposed: &'antitranspose Matrix ) -> AntiTranspose< 'antitranspose, Matrix > { AntiTranspose { unantitransposed } }
-//     }
-
-// //  MAJOR ASCEND
-// impl < 'antitranspose, Matrix, ColIndex, ViewMinorDescend > 
-
-//     ViewRowAscend
-//         < ColIndex, ViewMinorDescend > for 
-
-//     AntiTranspose< 'antitranspose, Matrix >
-
-//     where
-//         Matrix:                     ViewColDescend< ColIndex, ViewMinorDescend >,
-//         ViewMinorDescend:           IntoIterator,
-// {
-//     fn   view_major_ascend( &self, index: ColIndex ) -> ViewMinorDescend {  self.unantitransposed.view_minor_descend( index ) } 
-// }
-
-// //  MAJOR DESCEND
-// impl < 'antitranspose, Matrix, ColIndex, ViewMinorAscend > 
-
-//     ViewRowDescend
-//         < ColIndex, ViewMinorAscend > for 
-
-//     AntiTranspose< 'antitranspose, Matrix >
-
-//     where
-//         Matrix:                     ViewColAscend< ColIndex, ViewMinorAscend >,
-//         ViewMinorAscend:            IntoIterator,
-// {
-//     fn   view_major_descend( &self, index: ColIndex ) -> ViewMinorAscend {  self.unantitransposed.view_minor_ascend( index ) } 
-// }
-
-// //  MINOR ASCEND
-// impl < 'antitranspose, Matrix, RowIndex, ViewMajorDescend > 
-
-//     ViewColAscend
-//         < RowIndex, ViewMajorDescend > for 
-
-//     AntiTranspose< 'antitranspose, Matrix >
-
-//     where
-//         Matrix:                     ViewRowAscend< RowIndex, ViewMajorDescend >,
-//         ViewMajorDescend:           IntoIterator,
-// {
-//     fn   view_minor_ascend( &self, index: RowIndex ) -> ViewMajorDescend {  self.unantitransposed.view_major_ascend( index ) } 
-// }
-
-// //  MINOR DESCEND
-// impl < 'antitranspose, Matrix, RowIndex, ViewMajorAscend > 
-
-//     ViewColDescend
-//         < RowIndex, ViewMajorAscend > for 
-
-//     AntiTranspose< 'antitranspose, Matrix >
-
-//     where
-//         Matrix:                     ViewRowAscend< RowIndex, ViewMajorAscend >,
-//         ViewMajorAscend:            IntoIterator,
-// {
-//     fn   view_minor_descend( &self, index: RowIndex ) -> ViewMajorAscend {  self.unantitransposed.view_major_ascend( index ) } 
-// }
-
-
-
-
-
-
-
 
 
 
@@ -330,86 +305,95 @@ impl < Matrix >
 /// Transpose of a matrix, evaluated in a lazy fashion.
 /// 
 /// This struct is "lazy" in the sense that it does not transform the underlying data; rather, it simply swaps access commands with other
-/// access commands.  For example, to execute the method `view_major_ascend`, a `Transpose` struct simply calls `view_minor_ascend` on
+/// access commands.  For example, to execute the method `row`, a `Transpose` struct simply calls `column` on
 /// the underlying matrix.
 /// 
 /// # Examples
 /// 
 /// ```
-/// use oat_rust::algebra::matrices::types::transpose::{Transpose, AntiTranspose};
+/// use oat_rust::algebra::matrices::types::transpose::{Transpose, OrderAntiTranspose};
 /// use oat_rust::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
 /// use oat_rust::algebra::matrices::query::MatrixOracle;
-/// use itertools;
+/// use oat_rust::utilities::iterators::general::result_iterators_are_elementwise_equal;
 /// 
 /// // matrix
-/// let a     =   VecOfVec::new( vec![
-///                                 vec![ (0,0), (1,1), (2,2) ],
-///                                 vec![ (0,3), (1,4), (2,5) ],
-///                              ] );
+/// let matrix: & VecOfVec<usize,usize> =   & VecOfVec::new( vec![
+///                                             vec![ (0,0), (1,1), (2,2) ],
+///                                             vec![ (0,3), (1,4), (2,5) ],
+///                                         ] ).ok().unwrap();
 /// 
 /// // its transpose
-/// let tran    =   Transpose::new( &a );
+/// let tran    =   Transpose::new( &matrix );
 /// 
 /// // its antitranspose
-/// let anti    =   AntiTranspose::new( &a );                                                                                                                                 
+/// let anti    =   OrderAntiTranspose::new( &matrix );
 /// 
 /// 
-/// for row in 0 .. 2 {
-///     
-///     assert!( itertools::equal( (&a).row(row),                           tran.column( row ) )                        );
-///     assert!( itertools::equal( (&a).row_opt(row).unwrap(),              tran.column_opt( row ).unwrap() )           );
-///     assert!( itertools::equal( (&a).row_reverse(row),                   tran.column_reverse( row))                  );
-///     assert!( itertools::equal( (&a).row_reverse_opt(row).unwrap(),      tran.column_reverse_opt( row).unwrap() )    );
-/// 
-///     assert!( itertools::equal( (&a).row_reverse(row),                   anti.column( row) )                         );
-///     assert!( itertools::equal( (&a).row_reverse_opt(row).unwrap(),      anti.column_opt( row).unwrap() )            ); 
-///     assert!( itertools::equal( (&a).row(row),                           anti.column_reverse( row) )                 );
-///     assert!( itertools::equal( (&a).row_opt(row).unwrap(),              anti.column_reverse_opt( row).unwrap() )    );
+/// // check that rows and columns are (anti)transposed correctly
+/// for index in 0 .. 2 {
+///     assert!( matrix.row(&index).eq(                  tran.column(&index) )               );
+///     assert!( matrix.row_reverse(&index).eq(          tran.column_reverse(&index) )       );            
+///     assert!( matrix.row(&index).eq(                  anti.column_reverse(&index) )       );
+///     assert!( matrix.row_reverse(&index).eq(          anti.column(&index) )               );
 /// }
 /// 
-/// for col in 0 .. 3 {
+/// for index in 0 .. 3 {
+///     assert!( matrix.column(&index).eq(                tran.row(&index) )                 );
+///     assert!( matrix.column_reverse(&index).eq(        tran.row_reverse(&index) )         );
+///     assert!( matrix.column(&index).eq(                anti.row_reverse(&index) )         );            
+///     assert!( matrix.column_reverse(&index).eq(        anti.row(&index) )                 );
+/// }        
+///                                                                                             
+/// // check that rows and columns are (anti)transposed correctly, even when we pass invalid indices     
+/// for index in 0 .. 5 {    
+///     assert!( result_iterators_are_elementwise_equal( 
+///         matrix.row_result(&index),                 tran.column_result(&index) 
+///     ));    
+///     assert!( result_iterators_are_elementwise_equal( 
+///         matrix.row_result(&index),                 anti.column_reverse_result(&index) 
+///     ));    
 /// 
-///     assert!( itertools::equal( (&a).column(col),                        tran.row(col) )                             );
-///     assert!( itertools::equal( (&a).column_opt(col).unwrap(),           tran.row_opt(col).unwrap() )                );
-///     assert!( itertools::equal( (&a).column_reverse(col),                tran.row_reverse(col) )                     );
-///     assert!( itertools::equal( (&a).column_reverse_opt(col).unwrap(),   tran.row_reverse_opt(col).unwrap() )        );
-///     
-///     assert!( itertools::equal( (&a).column(col),                        anti.row_reverse(col) )                     );
-///     assert!( itertools::equal( (&a).column_opt(col).unwrap(),           anti.row_reverse_opt(col).unwrap() )        );
-///     assert!( itertools::equal( (&a).column_reverse(col),                anti.row(col) )                             );
-///     assert!( itertools::equal( (&a).column_reverse_opt(col).unwrap(),   anti.row_opt(col).unwrap() )                );
-/// }  
+///     assert!( result_iterators_are_elementwise_equal( 
+///         matrix.row_reverse_result(&index),         tran.column_reverse_result(&index) 
+///     ));  
+///     assert!( result_iterators_are_elementwise_equal( 
+///         matrix.row_reverse_result(&index),         anti.column_result(&index) 
+///     ));                                       
+/// }
+/// 
+/// for index in 0 .. 5 {    
+///     assert!( result_iterators_are_elementwise_equal( 
+///         matrix.column_result(&index),                 tran.row_result(&index) 
+///     ));    
+///     assert!( result_iterators_are_elementwise_equal( 
+///         matrix.column_result(&index),                 anti.row_reverse_result(&index) 
+///     ));    
+/// 
+///     assert!( result_iterators_are_elementwise_equal( 
+///         matrix.column_reverse_result(&index),         tran.row_reverse_result(&index) 
+///     ));  
+///     assert!( result_iterators_are_elementwise_equal( 
+///         matrix.column_reverse_result(&index),         anti.row_result(&index) 
+///     ));                                       
+/// }
 /// ```
 /// 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Getters, Dissolve, new)]
 pub struct Transpose< Matrix > { untransposed: Matrix }
 
-impl < Matrix >
 
-    Transpose
-        < Matrix >
-{
-    pub fn new( untransposed: Matrix ) -> Transpose< Matrix > { Transpose { untransposed } }
-}
-
-    //  CLONE
-impl < Matrix: Clone > 
-
-    Clone for
-
-    Transpose< Matrix >
-
-{ fn clone(&self) -> Self { Transpose { untransposed: self.untransposed.clone() } } }    
+//  MATRIX ORACLE
+//  --------------------------
 
 
-    //  MATRIX ORACLE
-    impl< Matrix > 
+impl< Matrix > 
 
-    MatrixOracle for 
-    
-    Transpose< Matrix >
+MatrixOracle for 
 
-    where
-        Matrix:     MatrixOracle
+Transpose< Matrix >
+
+where
+    Matrix:     MatrixOracle
 
 {
     type Coefficient        =   Matrix::Coefficient;       // The type of coefficient stored in each entry of the matrix
@@ -417,160 +401,94 @@ impl < Matrix: Clone >
     type RowIndex           =   Matrix::ColumnIndex;          // The type key used to look up rows.  Matrices can have rows indexed by anything: integers, simplices, strings, etc.
     type ColumnIndex        =   Matrix::RowIndex;       // The type of column indices
     
-    type RowEntry           =   Matrix::ColumnEntry;          // The type of entries in each row; these are essentially pairs of form `(column_index, coefficient)`
-    type ColumnEntry        =   Matrix::RowEntry;       // The type of entries in each column; these are essentially pairs of form `(row_index, coefficient)`
+    type RowEntry           =   Matrix::ColumnEntry;          // The type of entries in each row; these are essentially pairs of form `(&column_index, coefficient)`
+    type ColumnEntry        =   Matrix::RowEntry;       // The type of entries in each column; these are essentially pairs of form `(&row_index, coefficient)`
     
     type Row                =   Matrix::Column;               // What you get when you ask for a row.
-    type RowIter            =   Matrix::ColumnIter;           // What you get when you call `row.into_iter()`, where `row` is a row
     type RowReverse         =   Matrix::ColumnReverse;        // What you get when you ask for a row with the order of entries reversed
-    type RowReverseIter     =   Matrix::ColumnReverseIter;    // What you get when you call `row_reverse.into_iter()`, where `row_reverse` is a reversed row (which is a row with order of entries reversed)
     
     type Column             =   Matrix::Row;            // What you get when you ask for a column
-    type ColumnIter         =   Matrix::RowIter;        // What you get when you call `column.into_iter()`, where `column` is a column
     type ColumnReverse      =   Matrix::RowReverse;     // What you get when you ask for a column with the order of entries reversed 
-    type ColumnReverseIter  =   Matrix::RowReverseIter; // What you get when you call `column_reverse.into_iter()`, where `column_reverse` is a reversed column (which is a column with order of entries reversed)
 
-    fn entry(                   & self,  row: Self::RowIndex, column: Self::ColumnIndex )   ->  Option< Self::Coefficient > {
-        self.untransposed.entry( column, row )
-    }
+    fn structural_nonzero_entry(                   &   self, row:   & Self::RowIndex, column: & Self::ColumnIndex ) ->  Option< Self::Coefficient > 
+        { self.untransposed.structural_nonzero_entry( column, row ) }
+    fn has_column_for_index(  &   self, index: & Self::ColumnIndex)   -> bool 
+        { self.untransposed.has_row_for_index(index) }
+    fn has_row_for_index(     &   self, index: &Self::RowIndex   )   -> bool 
+        { self.untransposed.has_column_for_index(index) }
 
-    fn row(                     & self,  index: Self::RowIndex    )       -> Self::Row 
+    fn row(                     &self,  index: &Self::RowIndex    )       -> Self::Row 
         { self.untransposed.column(index) }
-    fn row_opt(                 & self,  index: Self::RowIndex    )   -> Option<Self::Row>
-        { self.untransposed.column_opt(index) }     
-    fn row_reverse(             & self,  index: Self::RowIndex    )       -> Self::RowReverse
+    fn row_result(                 &   self, index: & Self::RowIndex   )   -> Result< Self::Row, Self::RowIndex >
+        { self.untransposed.column_result(index) }     
+    fn row_reverse(             &self,  index: &Self::RowIndex    )       -> Self::RowReverse
         { self.untransposed.column_reverse(index) }    
-    fn row_reverse_opt(         & self,  index: Self::RowIndex    )   -> Option<Self::RowReverse>
-        { self.untransposed.column_reverse_opt(index) }
+    fn row_reverse_result(         &   self, index: & Self::RowIndex   )   -> Result< Self::RowReverse, Self::RowIndex >
+        { self.untransposed.column_reverse_result(index) }
     
-    fn column(                  & self,  index: Self::ColumnIndex )       -> Self::Column
+    fn column(                  &self,  index: &Self::ColumnIndex )       -> Self::Column
         { self.untransposed.row(index) }
-    fn column_opt(              & self,  index: Self::ColumnIndex )   -> Option<Self::Column>
-        { self.untransposed.row_opt(index) }    
-    fn column_reverse(          & self,  index: Self::ColumnIndex )       -> Self::ColumnReverse
+    fn column_result(      &   self, index: & Self::ColumnIndex)   -> Result< Self::Column, Self::ColumnIndex >
+        { self.untransposed.row_result(index) }    
+    fn column_reverse(          &self,  index: &Self::ColumnIndex )       -> Self::ColumnReverse
         { self.untransposed.row_reverse(index) }
-    fn column_reverse_opt(      & self,  index: Self::ColumnIndex )   -> Option<Self::ColumnReverse>
-        { self.untransposed.row_reverse_opt(index) }
+    fn column_reverse_result(      &   self, index: & Self::ColumnIndex)   -> Result< Self::ColumnReverse, Self::ColumnIndex >
+        { self.untransposed.row_reverse_result(index) }
 } 
 
 
 
-    //  INDICES AND COEFFICIENTS
-impl < Matrix: IndicesAndCoefficients > 
-
-    IndicesAndCoefficients for
-
-    Transpose< Matrix >
-
-{ 
-    type EntryMajor = Matrix::EntryMinor;
-    type EntryMinor = Matrix::EntryMajor;
-    type ColIndex = Matrix::RowIndex; 
-    type RowIndex = Matrix::ColIndex; 
-    type Coefficient = Matrix::Coefficient; 
-}    
+//  MATRIX ALGEBRA
+//  --------------------------
 
 
-//  MAJOR ASCEND
-impl < Matrix > 
 
-    ViewRow for 
+impl < Matrix >
 
-    Transpose< Matrix >
+    MatrixAlgebra for
 
-    where
-        Matrix:                     ViewCol + IndicesAndCoefficients,
+    Transpose< Matrix > where
+
+    Matrix: MatrixAlgebra 
 {
-    type ViewMajor            = Matrix::ViewMinor;
-    type ViewMajorIntoIter    = Matrix::ViewMinorIntoIter;
+    type OrderOperatorForColumnEntries =   Matrix::OrderOperatorForRowEntries;
+    type OrderOperatorForColumnIndices =   Matrix::OrderOperatorForRowIndices;
+    type OrderOperatorForRowEntries    =   Matrix::OrderOperatorForColumnEntries;
+    type OrderOperatorForRowIndices    =   Matrix::OrderOperatorForColumnIndices;
+    type RingOperator               =   Matrix::RingOperator;
 
-    fn   view_major( &self, index: Self::RowIndex ) -> Self::ViewMajor {  self.untransposed.view_minor( index ) } 
+    fn order_operator_for_column_entries( &self ) -> Self::OrderOperatorForColumnEntries { 
+        self.untransposed.order_operator_for_row_entries()
+    }
+    fn order_operator_for_column_indices( &self ) -> Self::OrderOperatorForColumnIndices { 
+        self.untransposed.order_operator_for_row_indices()
+    }   
+    fn order_operator_for_row_entries( &self ) -> Self::OrderOperatorForRowEntries { 
+        self.untransposed.order_operator_for_column_entries()
+    }
+    fn order_operator_for_row_indices( &self ) -> Self::OrderOperatorForRowIndices { 
+        self.untransposed.order_operator_for_column_indices()
+    }
+    fn ring_operator( &self ) -> Self::RingOperator {
+        self.untransposed.ring_operator()
+    }     
 }
 
 
-//  MAJOR ASCEND
-impl < Matrix > 
-
-    ViewRowAscend for 
-
-    Transpose< Matrix >
-
-    where
-        Matrix:                     ViewColAscend + IndicesAndCoefficients,
-{
-    type ViewMajorAscend            = Matrix::ViewMinorAscend;
-    type ViewMajorAscendIntoIter    = Matrix::ViewMinorAscendIntoIter;
-
-    fn   view_major_ascend( &self, index: Self::RowIndex ) -> Self::ViewMajorAscend {  self.untransposed.view_minor_ascend( index ) } 
-}
 
 
-//  MAJOR DESCEND
-impl < Matrix > 
 
-    ViewRowDescend for 
-
-    Transpose< Matrix >
-
-    where
-        Matrix:                     ViewColDescend + IndicesAndCoefficients,
-{
-    type ViewMajorDescend           =   Matrix::ViewMinorDescend;
-    type ViewMajorDescendIntoIter   =   Matrix::ViewMinorDescendIntoIter;
-
-    fn   view_major_descend( &self, index: Self::RowIndex ) -> Self::ViewMajorDescend {  self.untransposed.view_minor_descend( index ) } 
-}
+//  MATRIX ORACLE OPERATIONS
+//  --------------------------
 
 
-//  MAJOR ASCEND
-impl < Matrix > 
+impl< Matrix > 
 
-    ViewCol for 
+MatrixOracleOperations for 
 
-    Transpose< Matrix >
+Transpose< Matrix >
+{}
 
-    where
-        Matrix:                     ViewRow + IndicesAndCoefficients,
-{
-    type ViewMinor            = Matrix::ViewMajor;
-    type ViewMinorIntoIter    = Matrix::ViewMajorIntoIter;
-
-    fn   view_minor( &self, index: Self::ColIndex ) -> Self::ViewMinor {  self.untransposed.view_major( index ) } 
-}
-
-
-//  MINOR ASCEND
-impl < Matrix > 
-
-    ViewColAscend for 
-
-    Transpose< Matrix >
-
-    where
-        Matrix:                     ViewRowAscend + IndicesAndCoefficients,
-{
-    type ViewMinorAscend            =   Matrix::ViewMajorAscend;
-    type ViewMinorAscendIntoIter    =   Matrix::ViewMajorAscendIntoIter;
-
-    fn   view_minor_ascend( &self, index: Self::ColIndex ) -> Self::ViewMinorAscend {  self.untransposed.view_major_ascend( index ) } 
-}
-
-
-//  MINOR DESCEND
-impl < Matrix > 
-
-    ViewColDescend for 
-
-    Transpose< Matrix >
-
-    where
-        Matrix:                     ViewRowDescend + IndicesAndCoefficients,
-{
-    type ViewMinorDescend           =   Matrix::ViewMajorDescend;
-    type ViewMinorDescendIntoIter   =   Matrix::ViewMajorDescendIntoIter;
-    
-    fn   view_minor_descend( &self, index: Self::ColIndex ) -> Self::ViewMinorDescend {  self.untransposed.view_major_descend( index ) } 
-}
 
 
 
@@ -585,7 +503,7 @@ impl < Matrix >
 
 #[cfg(test)]
 mod tests {
-    use itertools::Itertools;
+    
 
     
 
@@ -593,7 +511,7 @@ mod tests {
     #[test]
     fn test_transpose_and_antitranspose() {
         
-        use crate::algebra::matrices::types::transpose::{Transpose, AntiTranspose};
+        use crate::algebra::matrices::types::transpose::{Transpose, OrderAntiTranspose};
         use crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
         use crate::algebra::matrices::query::MatrixOracle;
         use itertools;
@@ -602,44 +520,119 @@ mod tests {
         let a     =   VecOfVec::new( vec![
                                                 vec![ (0,0), (1,1), (2,2) ],
                                                 vec![ (0,3), (1,4), (2,5) ],
-                                            ] );
+                                            ] ).ok().unwrap();
         
         // its transpose
         let tran    =   Transpose::new( &a );
 
         // its antitranspose
-        let anti    =   AntiTranspose::new( &a );                                                                                                                                 
+        let anti    =   OrderAntiTranspose::new( &a );                                                                                                                                 
         
 
         for row in 0 .. 2 {
             
-            assert!( itertools::equal( (&a).row(row),                           tran.column( row ) )                        );
-            assert!( itertools::equal( (&a).row_opt(row).unwrap(),              tran.column_opt( row ).unwrap() )           );
-            assert!( itertools::equal( (&a).row_reverse(row),                   tran.column_reverse( row))                  );
-            assert!( itertools::equal( (&a).row_reverse_opt(row).unwrap(),      tran.column_reverse_opt( row).unwrap() )    );
+            assert!( itertools::equal( (&a).row(&row),                           tran.column(&row ) )                        );
+            assert!( itertools::equal( (&a).row_result(&row).unwrap(),              tran.column_result(&row ).unwrap() )           );
+            assert!( itertools::equal( (&a).row_reverse(&row),                   tran.column_reverse(&row))                  );
+            assert!( itertools::equal( (&a).row_reverse_result(&row).unwrap(),      tran.column_reverse_result(&row).unwrap() )    );
 
-            assert!( itertools::equal( (&a).row_reverse(row),                   anti.column( row) )                         );
-            assert!( itertools::equal( (&a).row_reverse_opt(row).unwrap(),      anti.column_opt( row).unwrap() )            ); 
-            assert!( itertools::equal( (&a).row(row),                           anti.column_reverse( row) )                 );
-            assert!( itertools::equal( (&a).row_opt(row).unwrap(),              anti.column_reverse_opt( row).unwrap() )    );
+            assert!( itertools::equal( (&a).row_reverse(&row),                   anti.column(&row) )                         );
+            assert!( itertools::equal( (&a).row_reverse_result(&row).unwrap(),      anti.column_result(&row).unwrap() )            ); 
+            assert!( itertools::equal( (&a).row(&row),                           anti.column_reverse(&row) )                 );
+            assert!( itertools::equal( (&a).row_result(&row).unwrap(),              anti.column_reverse_result(&row).unwrap() )    );
         }
 
         for col in 0 .. 3 {
 
-            assert!( itertools::equal( (&a).column(col),                        tran.row(col) )                             );
-            assert!( itertools::equal( (&a).column_opt(col).unwrap(),           tran.row_opt(col).unwrap() )                );
-            assert!( itertools::equal( (&a).column_reverse(col),                tran.row_reverse(col) )                     );
-            assert!( itertools::equal( (&a).column_reverse_opt(col).unwrap(),   tran.row_reverse_opt(col).unwrap() )        );
+            assert!( itertools::equal( (&a).column(&col),                        tran.row(&col) )                             );
+            assert!( itertools::equal( (&a).column_result(&col).unwrap(),           tran.row_result(&col).unwrap() )                );
+            assert!( itertools::equal( (&a).column_reverse(&col),                tran.row_reverse(&col) )                     );
+            assert!( itertools::equal( (&a).column_reverse_result(&col).unwrap(),   tran.row_reverse_result(&col).unwrap() )        );
             
-            assert!( itertools::equal( (&a).column(col),                        anti.row_reverse(col) )                     );
-            assert!( itertools::equal( (&a).column_opt(col).unwrap(),           anti.row_reverse_opt(col).unwrap() )        );
-            assert!( itertools::equal( (&a).column_reverse(col),                anti.row(col) )                             );
-            assert!( itertools::equal( (&a).column_reverse_opt(col).unwrap(),   anti.row_opt(col).unwrap() )                );
+            assert!( itertools::equal( (&a).column(&col),                        anti.row_reverse(&col) )                     );
+            assert!( itertools::equal( (&a).column_result(&col).unwrap(),           anti.row_reverse_result(&col).unwrap() )        );
+            assert!( itertools::equal( (&a).column_reverse(&col),                anti.row(&col) )                             );
+            assert!( itertools::equal( (&a).column_reverse_result(&col).unwrap(),   anti.row_result(&col).unwrap() )                );
             
-        }        
+        }    
 
+    }    
+
+
+    #[test]
+    fn test_antitranspose() {
+        
+        use crate::algebra::matrices::types::transpose::{Transpose, OrderAntiTranspose};
+        use crate::algebra::matrices::types::vec_of_vec::sorted::VecOfVec;
+        use crate::algebra::matrices::query::MatrixOracle;
+        use crate::utilities::iterators::general::result_iterators_are_elementwise_equal;
+
+        // matrix
+        let matrix: & VecOfVec<usize,usize> =   & VecOfVec::new( vec![
+                                                    vec![ (0,0), (1,1), (2,2) ],
+                                                    vec![ (0,3), (1,4), (2,5) ],
+                                                ] ).ok().unwrap();
+        
+        // its transpose
+        let tran    =   Transpose::new( &matrix );
+        
+        // its antitranspose
+        let anti    =   OrderAntiTranspose::new( &matrix );
+
+
+        // check that rows and columns are (anti)transposed correctly
+        for index in 0 .. 2 {
+            assert!( matrix.row(&index).eq(                  tran.column(&index) )               );
+            assert!( matrix.row_reverse(&index).eq(          tran.column_reverse(&index) )       );            
+            assert!( matrix.row(&index).eq(                  anti.column_reverse(&index) )       );
+            assert!( matrix.row_reverse(&index).eq(          anti.column(&index) )               );
+        }
+
+        for index in 0 .. 3 {
+            assert!( matrix.column(&index).eq(                tran.row(&index) )                 );
+            assert!( matrix.column_reverse(&index).eq(        tran.row_reverse(&index) )         );
+            assert!( matrix.column(&index).eq(                anti.row_reverse(&index) )         );            
+            assert!( matrix.column_reverse(&index).eq(        anti.row(&index) )                 );
+        }        
+                                                                                                    
+        // check that rows and columns are (anti)transposed correctly, even when we pass invalid indices     
+        for index in 0 .. 5 {    
+            assert!( result_iterators_are_elementwise_equal( 
+                matrix.row_result(&index),                 tran.column_result(&index) 
+            ));    
+            assert!( result_iterators_are_elementwise_equal( 
+                matrix.row_result(&index),                 anti.column_reverse_result(&index) 
+            ));    
+
+            assert!( result_iterators_are_elementwise_equal( 
+                matrix.row_reverse_result(&index),         tran.column_reverse_result(&index) 
+            ));  
+            assert!( result_iterators_are_elementwise_equal( 
+                matrix.row_reverse_result(&index),         anti.column_result(&index) 
+            ));                                       
+        }
+
+        for index in 0 .. 5 {    
+            assert!( result_iterators_are_elementwise_equal( 
+                matrix.column_result(&index),                 tran.row_result(&index) 
+            ));    
+            assert!( result_iterators_are_elementwise_equal( 
+                matrix.column_result(&index),                 anti.row_reverse_result(&index) 
+            ));    
+
+            assert!( result_iterators_are_elementwise_equal( 
+                matrix.column_reverse_result(&index),         tran.row_reverse_result(&index) 
+            ));  
+            assert!( result_iterators_are_elementwise_equal( 
+                matrix.column_reverse_result(&index),         anti.row_result(&index) 
+            ));                                       
+        }
 
     }
+
+
+
+    
 
 
 

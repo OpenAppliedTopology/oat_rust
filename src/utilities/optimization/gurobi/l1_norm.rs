@@ -20,6 +20,7 @@
 //!                 y and x are unconstrained continuous variables
 //! ```
 
+use gag::Gag;
 use grb::attribute::ModelIntAttr::LicenseExpiration;
 use grb::constr::IneqExpr;
 use grb::prelude::*;
@@ -31,13 +32,14 @@ use ordered_float::OrderedFloat;
 
 use crate::utilities::iterators::merge::hit::HitMergeByPredicateTrait;
 use crate::algebra::vectors::entries::{KeyValGet, KeyValSet, KeyValNew};
-use crate::algebra::matrices::query::{IndicesAndCoefficients, ViewRowAscend, ViewColDescend};
+use crate::algebra::matrices::query::MatrixOracle;
 use crate::algebra::matrices::operations::umatch::row_major::Umatch;
-use crate::algebra::rings::operator_traits::{Semiring, Ring, DivisionRing};
-use crate::algebra::rings::operator_structs::ring_native::{DivisionRingNative, FieldFloat64};
-use crate::utilities::order::{JudgePartialOrder, OrderOperatorByKeyCutsom, IntoReverseOrder};
+use crate::algebra::rings::traits::{SemiringOperations, RingOperations, DivisionRingOperations};
+use crate::algebra::rings::types::native::{RingOperatorForNativeRustNumberType, FieldFloat64};
+use crate::utilities::order::{JudgePartialOrder, OrderOperatorByKeyCustom, IntoReverseOrder};
+use crate::utilities::optimization::minimize_l1::SolutionL1;
 
-use crate::algebra::chains::jordan::JordanBasisMatrix;
+use crate::algebra::matrices::operations::umatch::differential::DifferentialComb;
 use crate::algebra::vectors::operations::VectorOperations;
 
 use std::fmt::Debug;
@@ -47,64 +49,34 @@ use std::collections::HashMap;
 use derive_getters::{Getters, Dissolve};
 use derive_new::new;
 
-type RationalRing = DivisionRingNative< Ratio< isize > >;
+type RationalRing = RingOperatorForNativeRustNumberType< Ratio< isize > >;
 
-
-/// Solution to an L1 optimization problem
-/// 
-/// This struct represents an optimal solution to a problem of form
-//! 
-//! ```
-//! minimize        c' |y|
-//! subject to      y = Ax + b
-//! where           y and x are unconstrained continuous variables
-//!                 |y| is the entry-wise absolute value of y
-//! ```
-//! 
-//! We solve this problem by solving the following equivalent linear programming problem:
-//! 
-//! ```text
-//! minimize        c' y
-//! subject to      y >=  + Ax + b
-//!                 y >=  - Ax - b 
-//!                 y and x are unconstrained continuous variables
-//! ```
-/// 
-/// The struct has methods to return `b`, `x`, `y`, as well as the objective values `cost(b)` and `cost(y)`.
-#[derive(new,Clone,Debug,Getters,Dissolve)]
-pub struct SolutionL1< Key, Coefficient >{
-    x:          Vec< (Key, f64) >,    
-    b:          Vec< (Key, Coefficient) >,
-    y:          Vec< (Key, f64) >,
-    cost_b:     f64,
-    cost_y:     f64,
-}
 
 
 /// Minimize `c' y` subject to `y = |Ax + b|`
 /// 
 /// This function solves a problem of form
 /// 
-//! ```
-//! minimize        c' |y|
-//! subject to      y = Ax + b
-//! where           y and x are unconstrained continuous variables
-//!                 |y| is the entry-wise absolute value of y
-//! ```
-//! 
-//! We solve this problem by solving the following equivalent linear programming problem:
-//! 
-//! ```text
-//! minimize        c' y
-//! subject to      y >=  + Ax + b
-//!                 y >=  - Ax - b 
-//!                 y and x are unconstrained continuous variables
-//! ```
+/// ```
+/// minimize        c' |y|
+/// subject to      y = Ax + b
+/// where           y and x are unconstrained continuous variables
+///                 |y| is the entry-wise absolute value of y
+/// ```
+/// 
+/// We solve this problem by solving the following equivalent linear programming problem:
+/// 
+/// ```text
+/// minimize        c' y
+/// subject to      y >=  + Ax + b
+///                 y >=  - Ax - b 
+///                 y and x are unconstrained continuous variables
+/// ```
 /// 
 /// Arguments:
 /// 
 /// - `a`: function that consumes `k` and returns the `k`th column  of `A`; a single column should not contain to different entries with the same row indes, but order of entries does not
-/// - `b`: the vector `b`, represented as an iterator over the nonzero entries; entries can by any type that implements `KeyValGet< Key, Coefficient >`, where `Coefficient` implements `ToPrimitive`
+/// - `b`: the vector `b`, represented as an iterator over the nonzero entries; entries can by any type that implements `KeyValGet< Key = Key, Val = Coefficient >`, where `Coefficient` implements `ToPrimitive`
 /// - `c`: the vector `c`, represented as a function that consumes `i` and returns `c[i]`.  We require the coefficients of `c` to be nonnegative.
 /// - `column_indices`: iterator that runs over the column indices of `A`; order does not matter
 ///
@@ -175,24 +147,43 @@ pub fn minimize_l1<
         mut a:                      ConstraintMatrix,
         b:                          ConstantVector,        
         mut c:                      CostVector,
-        column_indices:             ColumnIndexIterable,         
+        column_indices:             ColumnIndexIterable,   
+        verbose:                    bool,      
     ) 
     -> 
     grb::Result< SolutionL1<Key, Coefficient> >
     where
-        ConstraintMatrix:           FnMut( Key )->ConstraintVector,
+        ConstraintMatrix:           FnMut( & Key )->ConstraintVector,
         ConstraintVector:           IntoIterator,
-        ConstraintVector::Item:     KeyValGet< Key, Coefficient >,
+        ConstraintVector::Item:     KeyValGet< Key = Key, Val = Coefficient >,
         ConstantVector:             IntoIterator< Item = ConstantVectorEntry >,
-        ConstantVectorEntry:        KeyValGet< Key, Coefficient >,
-        Coefficient:               Clone + ToPrimitive, // enables casting to f64
-        Key:                        Clone + Debug + Hash + std::cmp::Eq, // required for the hashing performed by the generalized matching array   // !!!! try deleting debug
+        ConstantVectorEntry:        KeyValGet< Key = Key, Val = Coefficient >,
+        Coefficient:                Clone + ToPrimitive, // enables casting to f64
+        Key:                        Clone + Debug + Hash + std::cmp::Eq, // required for the hashing performed by the generalized matching array   
         ColumnIndexIterable:        Clone + IntoIterator< Item = Key >, 
-        CostVector:                 FnMut( Key) -> f64,                      
+        CostVector:                 FnMut( & Key) -> f64,                      
 {
+
+
+    let start = std::time::Instant::now();
+
+
+
     //  initialize the model
-    let env                         = Env::new("mip.log")?;    
-    let mut model               =   Model::new("model1")?;
+    let env:            grb::Env;
+    let mut model:      grb::Model;
+
+
+    if verbose {
+        env                         =   Env::new("mip.log")?; 
+        model                       =   Model::new("model1")?;        
+        model.set_param(grb::param::OutputFlag, 1)?;        
+    } else {
+        let print_gag = Gag::stdout().unwrap();  // this will suppress the output of Gurobi from printing
+        env                         =   Env::new("mip.log")?;     
+        model                       =   Model::new("model1")?;        
+        model.set_param(grb::param::OutputFlag, 0)?;        
+    }
 
 
     //  initialize lhs, which is a hashmap composed of LinExpr's that collectively represent the vector b
@@ -231,7 +222,7 @@ pub fn minimize_l1<
     }
 
 
-    // for entry in jordan.view_minor_descend( birth_column.clone() ) {
+    // for entry in jordan.column_reverse( birth_column.clone() ) {
     //     let mut linexpr         =   LinExpr::new();
     //     let coeff                       =   to_float(entry.val());
     //     linexpr.add_constant( coeff ); // note we don't put a variable here
@@ -284,7 +275,6 @@ pub fn minimize_l1<
                 rowkey_to_rownum.insert( key.clone(), rowkey_to_rownum.len() );   // update the hashmap rowkey --> rownum   
                 rownum_to_rowkey.push( key ); //  update the vector rownum --> rowkey
                 rownum_to_axz.push( linexpr ); // push the new constraint to our vector of constraints
-                // rownum_to_str.push( format!("{:?}x{:?}", coeff, var_x_name ) ); //  record a string for the row                         (!!!! maybe delete this?)
 
                 let var_y_name=   format!( "y{}", rownum_to_y.len() ); // name the row
                 let var_y_self        =   add_ctsvar!(model, name: &var_y_name, bounds: ..)?;   // add the row variable to the model
@@ -333,8 +323,20 @@ pub fn minimize_l1<
         }        
     }
     model.set_objective( linexpr, Minimize );
+
+
+    let construction_duration = start.elapsed();
+    if verbose {
+        println!("Finished constructing L1 optimization program.");
+        println!("Construction took {:?} seconds.", construction_duration.as_secs_f64());
+        println!("Passing program to solver.\n");
+    }    
+
+
     
     // solve
+    let start = std::time::Instant::now();
+
     model.write("model.lp");
     model.optimize();
 
@@ -342,6 +344,14 @@ pub fn minimize_l1<
 
     model.write("mip.lp")?;
     model.write("mip.sol")?;
+
+
+    let solve_duration = start.elapsed();
+    if verbose {
+        println!("\nFinished solving.\n");
+        println!("Solver took {:?} seconds in walltime.", solve_duration.as_secs_f64());
+
+    }    
 
     // reformat the solution
     let cost_axb     =   model.get_attr(attr::ObjVal)?;
@@ -374,7 +384,15 @@ pub fn minimize_l1<
                                 .filter( |x: &(Key,f64)| x.1 != 0.0 )
                                 .collect_vec();
     
-    let answer = SolutionL1{ cost_b, cost_axb, b, y, x };
+    let answer = SolutionL1{ 
+        cost_b, 
+        cost_y: cost_axb, 
+        b, 
+        y, 
+        x,
+        construction_time: construction_duration.as_secs_f64(),
+        solve_time: solve_duration.as_secs_f64(),
+    };
     Ok(answer)
 }
 
