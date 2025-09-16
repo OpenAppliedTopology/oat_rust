@@ -1,8 +1,14 @@
 [package]
-name = "oat_rust"
-version = "0.2.0"
-authors = ["Gregory Henselman-Petrusek Roek<gregory.roek@pnnl.gov>"]
-edition = "2018"
+name            =   "oat_rust"
+version         =   "0.2.0"
+authors         =   ["Gregory Henselman-Petrusek Roek<gregory.roek@pnnl.gov>"]
+edition         =   "2018"
+license-file    =   "LICENSE"
+description     =   "User-friendly tools for applied topology"
+homepage        =   "https://openappliedtopology.github.io"
+repository      =   "https://github.com/OpenAppliedTopology/oat_rust"
+categories      =   ["mathematics", "science"]
+keywords        =   ["data", "geometry", "ML", "HPC"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
