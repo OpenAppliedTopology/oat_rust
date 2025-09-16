@@ -182,6 +182,7 @@ use crate::algebra::matrices::operations::MatrixOracleOperations;
 use crate::algebra::rings::traits::RingOperations;
 use crate::utilities::iterators::general::{symmetric_difference_of_ordered_iterators, IntersectOrderedIterators, TwoTypeIterator};
 use crate::utilities::iterators::merge::hit::IteratorsMergedInSortedOrder;
+use crate::utilities::iterators::is_sorted::IsSortedBy;
 use crate::utilities::sequences_and_ordinals::{SortedVec, CombinationsReverse};
 
 use std::fmt::Debug;
